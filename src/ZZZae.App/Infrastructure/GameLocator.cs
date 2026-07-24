@@ -17,12 +17,61 @@ internal static class GameLocator
             return null;
         }
 
-        var normalized = Environment.ExpandEnvironmentVariables(configuredPath.Trim().Trim('"'));
+        try
+        {
+            return ResolveChinaGameExecutable(configuredPath);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
+    }
 
-        var executablePath = normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? normalized
-            : Path.Combine(normalized, GameExecutableName);
+    public static string ResolveChinaGameExecutable(string configuredPath)
+    {
+        if (string.IsNullOrWhiteSpace(configuredPath))
+        {
+            throw new ArgumentException(
+                "--game 后必须提供游戏目录或 ZenlessZoneZero.exe 路径。",
+                nameof(configuredPath)
+            );
+        }
 
-        return File.Exists(executablePath) ? Path.GetFullPath(executablePath) : null;
+        var expandedPath = Environment.ExpandEnvironmentVariables(configuredPath.Trim().Trim('"'));
+        var fullPath = Path.GetFullPath(expandedPath);
+        string executablePath;
+
+        if (Directory.Exists(fullPath))
+        {
+            executablePath = Path.Combine(fullPath, GameExecutableName);
+        }
+        else if (File.Exists(fullPath))
+        {
+            if (!Path.GetFileName(fullPath).Equals(GameExecutableName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"--game 指向的文件必须名为 {GameExecutableName}。");
+            }
+
+            executablePath = fullPath;
+        }
+        else
+        {
+            throw new FileNotFoundException($"--game 指定的路径不存在，或目录中没有 {GameExecutableName}。", fullPath);
+        }
+
+        if (!File.Exists(executablePath))
+        {
+            throw new FileNotFoundException($"指定的游戏目录中没有 {GameExecutableName}。", executablePath);
+        }
+
+        return Path.GetFullPath(executablePath);
     }
 }

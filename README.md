@@ -15,6 +15,15 @@ ZZZae 是 Windows x64 下的绝区零国服成就导出工具。
 3. 正常登录并进入游戏。ZZZae 识别到完整成就响应后，会立即写两个文件并退出；游戏会继续运行。
 4. 等待时可按 `Ctrl+C` 取消导出。
 
+可以在终端中指定游戏目录或游戏 EXE（路径含空格时必须保留引号）：
+
+```powershell
+.\ZZZae.exe --game "D:\Games\ZenlessZoneZero Game"
+.\ZZZae.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe"
+```
+
+两种写法任选一种。`--game` 只替代游戏路径定位，程序仍会检查 `version_info` 的国服正式渠道标记和 `GameAssembly.dll`，不会跳过兼容性检查。
+
 输出文件位于启动 ZZZae 时的目录。
 
 - `ZZZae-full-日期时间.json`：完整备份，保留服务端返回的全部成就记录、完成时间、未知字段和原始包；
@@ -26,11 +35,14 @@ ZZZae 是 Windows x64 下的绝区零国服成就导出工具。
 
 ## 兼容性
 
-游戏路径目前从以下注册表项读取：
+默认从以下注册表项读取游戏路径：
 
 ```text
 HKCU\Software\miHoYo\HYP\1_1\nap_cn\GameInstallPath
 ```
+
+注册表不存在或路径失效时，可以使用上述 `--game` 参数手动指定。ZZZae 不会
+扫描磁盘或修改注册表。
 
 ## 致谢与许可证
 

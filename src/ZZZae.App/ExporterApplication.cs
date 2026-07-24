@@ -44,9 +44,10 @@ internal static class ExporterApplication
         }
         Console.WriteLine();
 
-        if (args.Length != 0)
+        if (!TryParseArguments(args, out var configuredGamePath, out var argumentError))
         {
-            Console.Error.WriteLine("ZZZae 不需要命令行参数；请直接运行 ZZZae.exe。");
+            Console.Error.WriteLine(argumentError);
+            WriteUsage();
             return 2;
         }
 
@@ -58,7 +59,7 @@ internal static class ExporterApplication
 
         try
         {
-            return await ExportAsync();
+            return await ExportAsync(configuredGamePath);
         }
         catch (OperationCanceledException)
         {
@@ -80,22 +81,36 @@ internal static class ExporterApplication
         }
     }
 
-    private static async Task<int> ExportAsync()
+    private static async Task<int> ExportAsync(string? configuredGamePath)
     {
         EnsureGameIsNotRunning();
 
-        var gamePath =
-            GameLocator.TryFindChinaGameExecutable()
-            ?? throw new FileNotFoundException(
-                @"没有在注册表 HKCU\Software\miHoYo\HYP\1_1\nap_cn 的 GameInstallPath 找到国服游戏。"
-            );
+        string gamePath;
+        if (configuredGamePath is null)
+        {
+            Console.WriteLine("游戏路径来源：注册表");
+            gamePath =
+                GameLocator.TryFindChinaGameExecutable()
+                ?? throw new FileNotFoundException(
+                    """
+                    没有在注册表 HKCU\Software\miHoYo\HYP\1_1\nap_cn 的 GameInstallPath 找到国服游戏。
+                    如果游戏仍然存在，请使用 --game 指定游戏目录或 ZenlessZoneZero.exe 完整路径。
+                    """
+                );
+        }
+        else
+        {
+            Console.WriteLine("游戏路径来源：命令行 --game");
+            gamePath = GameLocator.ResolveChinaGameExecutable(configuredGamePath);
+        }
+
+        var gameVersion = ValidateChinaProductionBuild(gamePath);
         var hookPath =
             EmbeddedHook.TryExtract()
             ?? throw new InvalidOperationException(
                 @"当前构建没有内嵌 Hook DLL。请运行 publish.ps1 后使用 artifacts\publish\ZZZae.exe。"
             );
         var catalog = AchievementCatalog.LoadBundled();
-        var gameVersion = ValidateChinaProductionBuild(gamePath);
 
         Console.WriteLine($"游戏：{gamePath}");
         Console.WriteLine($"游戏构建：{gameVersion}（国服）");
@@ -166,6 +181,43 @@ internal static class ExporterApplication
         {
             Console.CancelKeyPress -= cancelHandler;
         }
+    }
+
+    private static bool TryParseArguments(string[] args, out string? configuredGamePath, out string? error)
+    {
+        configuredGamePath = null;
+        error = null;
+
+        if (args.Length == 0)
+        {
+            return true;
+        }
+
+        if (!args[0].Equals("--game", StringComparison.Ordinal))
+        {
+            error = "无法识别命令行参数。ZZZae 只支持可选参数 --game。";
+            return false;
+        }
+
+        if (args.Length == 1 || string.IsNullOrWhiteSpace(args[1]))
+        {
+            error = "--game 后必须提供游戏目录或 ZenlessZoneZero.exe 路径。";
+            return false;
+        }
+
+        if (args.Length != 2)
+        {
+            error = "--game 只能指定一个游戏目录或 ZenlessZoneZero.exe 路径。";
+            return false;
+        }
+
+        configuredGamePath = args[1];
+        return true;
+    }
+
+    private static void WriteUsage()
+    {
+        Console.Error.WriteLine(@"用法：ZZZae.exe [--game ""游戏目录或 ZenlessZoneZero.exe 路径""]");
     }
 
     private static async Task<AchievementSnapshot> WaitForSnapshotAsync(
