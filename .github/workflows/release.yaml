@@ -1,0 +1,164 @@
+name: Build and Release
+run-name: Release ${{ inputs.version || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example v1.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build win-x64
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Check toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet --info
+          gh --version
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = $env:REQUESTED_VERSION.Trim()
+          if ($version -notmatch '^v[0-9A-Za-z][0-9A-Za-z._-]*$') {
+            throw "Release version must start with v and contain only letters, numbers, dots, underscores, or hyphens."
+          }
+
+          "Release version: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish NativeAOT executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\publish.ps1 -Configuration Release
+
+      - name: Verify and prepare asset
+        id: assets
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $publishDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
+          $files = @(Get-ChildItem -LiteralPath $publishDirectory -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'ZZZae.exe') {
+            $names = $files.Name -join ', '
+            throw "Expected exactly one published file named ZZZae.exe, found: $names"
+          }
+
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts\release'
+          New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
+
+          $versionedFileName = "ZZZae_$($env:RELEASE_VERSION).exe"
+          $exe = Join-Path $releaseDirectory $versionedFileName
+          Copy-Item -LiteralPath $files[0].FullName -Destination $exe
+
+          "Published file: $exe"
+          "exe_path=$exe" >> $env:GITHUB_OUTPUT
+          "artifact_name=ZZZae-$($env:RELEASE_VERSION)-win-x64" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.assets.outputs.artifact_name }}
+          path: ${{ steps.assets.outputs.exe_path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          EXE_PATH: ${{ steps.assets.outputs.exe_path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = $env:RELEASE_VERSION
+          $checkedOutCommit = (git rev-parse HEAD).Trim()
+
+          git show-ref --verify --quiet "refs/tags/$version"
+          $tagExists = $LASTEXITCODE -eq 0
+          if ($tagExists) {
+            $tagCommit = (git rev-list -n 1 $version).Trim()
+            if ($tagCommit -ne $checkedOutCommit) {
+              throw "Tag $version points to $tagCommit, but the workflow built $checkedOutCommit."
+            }
+          }
+
+          gh release view $version --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit `
+              $version `
+              --repo $env:GITHUB_REPOSITORY `
+              --title $version
+            if ($LASTEXITCODE -ne 0) {
+              throw "Updating GitHub Release $version failed with exit code $LASTEXITCODE."
+            }
+
+            gh release upload `
+              $version `
+              $env:EXE_PATH `
+              --repo $env:GITHUB_REPOSITORY `
+              --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Uploading GitHub Release $version assets failed with exit code $LASTEXITCODE."
+            }
+            exit 0
+          }
+
+          $arguments = @(
+            'release', 'create',
+            $version,
+            $env:EXE_PATH,
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--title', $version,
+            '--generate-notes'
+          )
+          if ($tagExists) {
+            $arguments += '--verify-tag'
+          }
+          else {
+            $arguments += @('--target', $checkedOutCommit)
+          }
+          if ($version.Contains('-')) {
+            $arguments += '--prerelease'
+          }
+
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "Creating GitHub Release $version failed with exit code $LASTEXITCODE."
+          }
