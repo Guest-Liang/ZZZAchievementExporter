@@ -10,9 +10,5 @@ public sealed record AchievementRecord
 
     public bool? CompletedFlag { get; init; }
 
-    public required IReadOnlyDictionary<uint, ulong> RawVarints
-    {
-        get;
-        init;
-    }
+    public required IReadOnlyDictionary<uint, ulong> RawVarints { get; init; }
 }

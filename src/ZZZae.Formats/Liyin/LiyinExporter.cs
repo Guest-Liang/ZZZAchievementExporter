@@ -10,29 +10,24 @@ public static class LiyinExporter
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        var completed = snapshot.Records
-            .Where(static record => record.IsCompleted)
+        var completed = snapshot
+            .Records.Where(static record => record.IsCompleted)
             .ToDictionary(
                 static record => record.Id.ToString(),
-                static record => new LiyinAchievement
-                {
-                    Id = record.Id,
-                    Status = 3
-                });
+                static record => new LiyinAchievement { Id = record.Id, Status = 3 }
+            );
 
         var document = new LiyinDocument
         {
             Info = new LiyinInfo
             {
                 ExportApp = "liyin",
-                ExportTimestamp = snapshot.CapturedAt.ToUnixTimeMilliseconds()
+                ExportTimestamp = snapshot.CapturedAt.ToUnixTimeMilliseconds(),
             },
-            List = completed
+            List = completed,
         };
 
-        return JsonSerializer.Serialize(
-            document,
-            LiyinJsonContext.Default.LiyinDocument);
+        return JsonSerializer.Serialize(document, LiyinJsonContext.Default.LiyinDocument);
     }
 }
 

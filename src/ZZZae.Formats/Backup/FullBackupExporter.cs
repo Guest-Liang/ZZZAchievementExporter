@@ -7,13 +7,9 @@ namespace ZZZae.Formats.Backup;
 
 public static class FullBackupExporter
 {
-    private static readonly TimeSpan ChinaStandardOffset =
-        TimeSpan.FromHours(8);
+    private static readonly TimeSpan ChinaStandardOffset = TimeSpan.FromHours(8);
 
-    public static string Serialize(
-        AchievementSnapshot snapshot,
-        string metadataVersion,
-        int metadataCount)
+    public static string Serialize(AchievementSnapshot snapshot, string metadataVersion, int metadataCount)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -22,8 +18,7 @@ public static class FullBackupExporter
             Schema = "ZZZae.FullAchievementBackup",
             SchemaVersion = 3,
             ExportApp = "ZZZae",
-            CapturedAt = snapshot.CapturedAt
-                .ToOffset(ChinaStandardOffset),
+            CapturedAt = snapshot.CapturedAt.ToOffset(ChinaStandardOffset),
             GameVersion = snapshot.GameVersion,
             MetadataVersion = metadataVersion,
             MetadataCount = metadataCount,
@@ -32,38 +27,29 @@ public static class FullBackupExporter
                 CommandId = snapshot.SourceCommandId,
                 RecordFieldPath = snapshot.RecordFieldPath,
                 IdFieldNumber = snapshot.IdFieldNumber,
-                FinishTimestampFieldNumber =
-                    snapshot.FinishTimestampFieldNumber,
-                CompletedFlagFieldNumber =
-                    snapshot.CompletedFlagFieldNumber,
+                FinishTimestampFieldNumber = snapshot.FinishTimestampFieldNumber,
+                CompletedFlagFieldNumber = snapshot.CompletedFlagFieldNumber,
                 CatalogMatchCount = snapshot.CatalogMatchCount,
-                UnknownIdCount = snapshot.UnknownIdCount
+                UnknownIdCount = snapshot.UnknownIdCount,
             },
-            Records = snapshot.Records
-                .Select(static record => new FullBackupRecord
+            Records = snapshot
+                .Records.Select(static record => new FullBackupRecord
                 {
                     Id = record.Id,
                     IsCompleted = record.IsCompleted,
                     FinishTimestamp = record.FinishTimestamp,
-                    FinishTimeUtc8 = NormalizeTimestamp(
-                        record.FinishTimestamp),
+                    FinishTimeUtc8 = NormalizeTimestamp(record.FinishTimestamp),
                     CompletedFlag = record.CompletedFlag,
                     RawVarints = record.RawVarints.ToDictionary(
-                        static pair => pair.Key.ToString(
-                            CultureInfo.InvariantCulture),
-                        static pair => pair.Value)
+                        static pair => pair.Key.ToString(CultureInfo.InvariantCulture),
+                        static pair => pair.Value
+                    ),
                 })
                 .ToArray(),
-            RawPacket = new RawPacketInfo
-            {
-                HeaderBase64 = snapshot.RawHeader,
-                BodyBase64 = snapshot.RawPayload
-            }
+            RawPacket = new RawPacketInfo { HeaderBase64 = snapshot.RawHeader, BodyBase64 = snapshot.RawPayload },
         };
 
-        return JsonSerializer.Serialize(
-            document,
-            FullBackupJsonContext.Default.FullBackupDocument);
+        return JsonSerializer.Serialize(document, FullBackupJsonContext.Default.FullBackupDocument);
     }
 
     private static DateTimeOffset? NormalizeTimestamp(long? raw)
@@ -77,14 +63,10 @@ public static class FullBackupExporter
         {
             DateTimeOffset? timestamp = raw.Value switch
             {
-                >= 1_000_000_000_000_000 =>
-                    DateTimeOffset.FromUnixTimeMilliseconds(
-                        raw.Value / 1_000),
-                >= 1_000_000_000_000 =>
-                    DateTimeOffset.FromUnixTimeMilliseconds(raw.Value),
-                >= 1_000_000_000 =>
-                    DateTimeOffset.FromUnixTimeSeconds(raw.Value),
-                _ => null
+                >= 1_000_000_000_000_000 => DateTimeOffset.FromUnixTimeMilliseconds(raw.Value / 1_000),
+                >= 1_000_000_000_000 => DateTimeOffset.FromUnixTimeMilliseconds(raw.Value),
+                >= 1_000_000_000 => DateTimeOffset.FromUnixTimeSeconds(raw.Value),
+                _ => null,
             };
             return timestamp?.ToOffset(ChinaStandardOffset);
         }
@@ -184,5 +166,4 @@ internal sealed class RawPacketInfo
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(FullBackupDocument))]
-internal sealed partial class FullBackupJsonContext
-    : JsonSerializerContext;
+internal sealed partial class FullBackupJsonContext : JsonSerializerContext;

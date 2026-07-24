@@ -18,10 +18,7 @@ internal static class EmbeddedHook
 
         var data = ReadAllBytes(source);
         var digest = Convert.ToHexString(SHA256.HashData(data));
-        var directory = Path.Combine(
-            Path.GetTempPath(),
-            "ZZZae",
-            digest[..16]);
+        var directory = Path.Combine(Path.GetTempPath(), "ZZZae", digest[..16]);
         var destination = Path.Combine(directory, ResourceName);
 
         Directory.CreateDirectory(directory);
@@ -41,9 +38,7 @@ internal static class EmbeddedHook
         return destination.ToArray();
     }
 
-    private static bool HasSameContent(
-        string path,
-        ReadOnlySpan<byte> expected)
+    private static bool HasSameContent(string path, ReadOnlySpan<byte> expected)
     {
         if (!File.Exists(path))
         {

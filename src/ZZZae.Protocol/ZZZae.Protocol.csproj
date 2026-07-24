@@ -8,7 +8,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Metadata\AchievementInfo.json"
-                      LogicalName="ZZZae.Metadata.AchievementInfo.json" />
+    <EmbeddedResource
+      Include="Metadata\AchievementInfo.json"
+      LogicalName="ZZZae.Metadata.AchievementInfo.json"
+    />
   </ItemGroup>
 </Project>

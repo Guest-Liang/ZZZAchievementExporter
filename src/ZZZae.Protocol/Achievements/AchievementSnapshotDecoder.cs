@@ -17,29 +17,26 @@ public sealed class AchievementSnapshotDecoder
     public AchievementSnapshotDecoder(
         AchievementCatalog catalog,
         string gameVersion,
-        AchievementProtocolProfile profile)
+        AchievementProtocolProfile profile
+    )
     {
-        _catalog = catalog
-            ?? throw new ArgumentNullException(nameof(catalog));
-        _gameVersion = string.IsNullOrWhiteSpace(gameVersion)
-            ? "unknown"
-            : gameVersion;
-        _profile = profile
-            ?? throw new ArgumentNullException(nameof(profile));
+        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _gameVersion = string.IsNullOrWhiteSpace(gameVersion) ? "unknown" : gameVersion;
+        _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _recordPath = ParseRecordPath(profile.RecordFieldPath);
     }
 
-    public bool TryDecode(
-        CapturedPacket packet,
-        out AchievementSnapshot? snapshot)
+    public bool TryDecode(CapturedPacket packet, out AchievementSnapshot? snapshot)
     {
         ArgumentNullException.ThrowIfNull(packet);
         snapshot = null;
 
-        if (packet.CommandId != _profile.FullSnapshotCommandId
+        if (
+            packet.CommandId != _profile.FullSnapshotCommandId
             || packet.Body.Length < 16
             || !ProtoWire.TryParse(packet.Body, out var root)
-            || root is null)
+            || root is null
+        )
         {
             return false;
         }
@@ -56,8 +53,7 @@ public sealed class AchievementSnapshotDecoder
             return false;
         }
 
-        var catalogMatches = records.Count(
-            record => _catalog.Ids.Contains(record.Id));
+        var catalogMatches = records.Count(record => _catalog.Ids.Contains(record.Id));
         snapshot = new AchievementSnapshot
         {
             CapturedAt = packet.CapturedAt,
@@ -65,24 +61,20 @@ public sealed class AchievementSnapshotDecoder
             SourceCommandId = packet.CommandId,
             RecordFieldPath = _profile.RecordFieldPath,
             IdFieldNumber = _profile.IdFieldNumber,
-            FinishTimestampFieldNumber =
-                _profile.FinishTimestampFieldNumber,
-            CompletedFlagFieldNumber =
-                _profile.CompletedFlagFieldNumber,
+            FinishTimestampFieldNumber = _profile.FinishTimestampFieldNumber,
+            CompletedFlagFieldNumber = _profile.CompletedFlagFieldNumber,
             CatalogMatchCount = catalogMatches,
             UnknownIdCount = records.Count - catalogMatches,
             Records = records,
             RawHeader = packet.Header.ToArray(),
-            RawPayload = packet.Body.ToArray()
+            RawPayload = packet.Body.ToArray(),
         };
         return true;
     }
 
-    private bool HasVerifiedIdShape(
-        IReadOnlyList<Dictionary<uint, ulong>> rows)
+    private bool HasVerifiedIdShape(IReadOnlyList<Dictionary<uint, ulong>> rows)
     {
-        var values = rows
-            .Where(row => row.ContainsKey(_profile.IdFieldNumber))
+        var values = rows.Where(row => row.ContainsKey(_profile.IdFieldNumber))
             .Select(row => row[_profile.IdFieldNumber])
             .ToArray();
         if (values.Length < 3)
@@ -90,30 +82,22 @@ public sealed class AchievementSnapshotDecoder
             return false;
         }
 
-        var known = values.Count(value =>
-            value <= uint.MaxValue
-            && _catalog.Ids.Contains((uint)value));
-        var plausible = values.Count(value =>
-            value <= uint.MaxValue
-            && LooksLikeAchievementId((uint)value));
+        var known = values.Count(value => value <= uint.MaxValue && _catalog.Ids.Contains((uint)value));
+        var plausible = values.Count(value => value <= uint.MaxValue && LooksLikeAchievementId((uint)value));
 
-        return known >= 3
-            && known * 5 >= values.Length * 3
-            && plausible * 10 >= values.Length * 9;
+        return known >= 3 && known * 5 >= values.Length * 3 && plausible * 10 >= values.Length * 9;
     }
 
     private IReadOnlyList<AchievementRecord>? BuildRecords(
         IReadOnlyList<Dictionary<uint, ulong>> rows,
-        DateTimeOffset capturedAt)
+        DateTimeOffset capturedAt
+    )
     {
         var byId = new Dictionary<uint, AchievementRecord>();
 
         foreach (var row in rows)
         {
-            if (!row.TryGetValue(
-                    _profile.IdFieldNumber,
-                    out var rawId)
-                || rawId > uint.MaxValue)
+            if (!row.TryGetValue(_profile.IdFieldNumber, out var rawId) || rawId > uint.MaxValue)
             {
                 continue;
             }
@@ -124,46 +108,32 @@ public sealed class AchievementSnapshotDecoder
                 continue;
             }
 
-            var finishTimestamp = ReadInt64(
-                row,
-                _profile.FinishTimestampFieldNumber);
-            if (finishTimestamp is > 0
-                && !IsPlausibleTimestamp(
-                    finishTimestamp.Value,
-                    capturedAt))
+            var finishTimestamp = ReadInt64(row, _profile.FinishTimestampFieldNumber);
+            if (finishTimestamp is > 0 && !IsPlausibleTimestamp(finishTimestamp.Value, capturedAt))
             {
                 return null;
             }
 
-            var completedFlag = ReadBoolean(
-                row,
-                _profile.CompletedFlagFieldNumber);
+            var completedFlag = ReadBoolean(row, _profile.CompletedFlagFieldNumber);
             var record = new AchievementRecord
             {
                 Id = id,
-                IsCompleted = finishTimestamp is > 0
-                    || completedFlag is true,
+                IsCompleted = finishTimestamp is > 0 || completedFlag is true,
                 FinishTimestamp = finishTimestamp,
                 CompletedFlag = completedFlag,
-                RawVarints = new Dictionary<uint, ulong>(row)
+                RawVarints = new Dictionary<uint, ulong>(row),
             };
 
-            if (!byId.TryGetValue(id, out var previous)
-                || Prefer(record, previous))
+            if (!byId.TryGetValue(id, out var previous) || Prefer(record, previous))
             {
                 byId[id] = record;
             }
         }
 
-        return byId.Values
-            .OrderBy(static record => record.Id)
-            .ToArray();
+        return byId.Values.OrderBy(static record => record.Id).ToArray();
     }
 
-    private static IReadOnlyList<Dictionary<uint, ulong>>
-        ReadRows(
-            ProtoMessage root,
-            IReadOnlyList<uint> path)
+    private static IReadOnlyList<Dictionary<uint, ulong>> ReadRows(ProtoMessage root, IReadOnlyList<uint> path)
     {
         var containers = new List<ProtoMessage> { root };
 
@@ -174,13 +144,12 @@ public sealed class AchievementSnapshotDecoder
             {
                 foreach (var field in container.Fields)
                 {
-                    if (field.Number != path[index]
-                        || field.WireType
-                            != ProtoWireType.LengthDelimited
-                        || !ProtoWire.TryParse(
-                            field.Bytes,
-                            out var child)
-                        || child is null)
+                    if (
+                        field.Number != path[index]
+                        || field.WireType != ProtoWireType.LengthDelimited
+                        || !ProtoWire.TryParse(field.Bytes, out var child)
+                        || child is null
+                    )
                     {
                         continue;
                     }
@@ -203,14 +172,13 @@ public sealed class AchievementSnapshotDecoder
         {
             foreach (var field in container.Fields)
             {
-                if (field.Number != recordFieldNumber
-                    || field.WireType
-                        != ProtoWireType.LengthDelimited
-                    || !ProtoWire.TryParse(
-                        field.Bytes,
-                        out var record)
+                if (
+                    field.Number != recordFieldNumber
+                    || field.WireType != ProtoWireType.LengthDelimited
+                    || !ProtoWire.TryParse(field.Bytes, out var record)
                     || record is null
-                    || !TryCreateVarintRow(record, out var row))
+                    || !TryCreateVarintRow(record, out var row)
+                )
                 {
                     continue;
                 }
@@ -222,9 +190,7 @@ public sealed class AchievementSnapshotDecoder
         return rows;
     }
 
-    private static bool TryCreateVarintRow(
-        ProtoMessage message,
-        out Dictionary<uint, ulong> row)
+    private static bool TryCreateVarintRow(ProtoMessage message, out Dictionary<uint, ulong> row)
     {
         row = new Dictionary<uint, ulong>();
         if (message.Fields.Count is < 1 or > 32)
@@ -249,54 +215,34 @@ public sealed class AchievementSnapshotDecoder
         return row.Count != 0;
     }
 
-    private static bool Prefer(
-        AchievementRecord candidate,
-        AchievementRecord previous)
+    private static bool Prefer(AchievementRecord candidate, AchievementRecord previous)
     {
         if (candidate.IsCompleted != previous.IsCompleted)
         {
             return candidate.IsCompleted;
         }
 
-        return candidate.RawVarints.Count
-            > previous.RawVarints.Count;
+        return candidate.RawVarints.Count > previous.RawVarints.Count;
     }
 
-    private static long? ReadInt64(
-        IReadOnlyDictionary<uint, ulong> row,
-        uint fieldNumber)
+    private static long? ReadInt64(IReadOnlyDictionary<uint, ulong> row, uint fieldNumber)
     {
-        return row.TryGetValue(fieldNumber, out var value)
-            && value <= long.MaxValue
-                ? (long)value
-                : null;
+        return row.TryGetValue(fieldNumber, out var value) && value <= long.MaxValue ? (long)value : null;
     }
 
-    private static bool? ReadBoolean(
-        IReadOnlyDictionary<uint, ulong> row,
-        uint fieldNumber)
+    private static bool? ReadBoolean(IReadOnlyDictionary<uint, ulong> row, uint fieldNumber)
     {
-        return row.TryGetValue(fieldNumber, out var value)
-            && value <= 1
-                ? value == 1
-                : null;
+        return row.TryGetValue(fieldNumber, out var value) && value <= 1 ? value == 1 : null;
     }
 
-    private static bool IsPlausibleTimestamp(
-        long value,
-        DateTimeOffset capturedAt)
+    private static bool IsPlausibleTimestamp(long value, DateTimeOffset capturedAt)
     {
         const long earliestSeconds = 1_262_304_000;
-        var latestSeconds = capturedAt
-            .AddYears(5)
-            .ToUnixTimeSeconds();
+        var latestSeconds = capturedAt.AddYears(5).ToUnixTimeSeconds();
 
-        return value >= earliestSeconds
-                && value <= latestSeconds
-            || value >= earliestSeconds * 1_000
-                && value <= latestSeconds * 1_000
-            || value >= earliestSeconds * 1_000_000
-                && value <= latestSeconds * 1_000_000;
+        return value >= earliestSeconds && value <= latestSeconds
+            || value >= earliestSeconds * 1_000 && value <= latestSeconds * 1_000
+            || value >= earliestSeconds * 1_000_000 && value <= latestSeconds * 1_000_000;
     }
 
     private static bool LooksLikeAchievementId(uint value)
@@ -306,38 +252,30 @@ public sealed class AchievementSnapshotDecoder
 
     private static uint[] ParseRecordPath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path)
+        if (
+            string.IsNullOrWhiteSpace(path)
             || !path.StartsWith("$.", StringComparison.Ordinal)
-            || !path.EndsWith("[]", StringComparison.Ordinal))
+            || !path.EndsWith("[]", StringComparison.Ordinal)
+        )
         {
-            throw new ArgumentException(
-                "成就记录路径必须采用 $.字段.字段[] 格式。",
-                nameof(path));
+            throw new ArgumentException("成就记录路径必须采用 $.字段.字段[] 格式。", nameof(path));
         }
 
-        var segments = path[2..^2].Split(
-            '.',
-            StringSplitOptions.RemoveEmptyEntries);
+        var segments = path[2..^2].Split('.', StringSplitOptions.RemoveEmptyEntries);
         var result = new uint[segments.Length];
         if (result.Length == 0)
         {
-            throw new ArgumentException(
-                "成就记录路径不能为空。",
-                nameof(path));
+            throw new ArgumentException("成就记录路径不能为空。", nameof(path));
         }
 
         for (var index = 0; index < segments.Length; index++)
         {
-            if (!uint.TryParse(
-                    segments[index],
-                    NumberStyles.None,
-                    CultureInfo.InvariantCulture,
-                    out result[index])
-                || result[index] == 0)
+            if (
+                !uint.TryParse(segments[index], NumberStyles.None, CultureInfo.InvariantCulture, out result[index])
+                || result[index] == 0
+            )
             {
-                throw new ArgumentException(
-                    $"成就记录路径包含无效字段：{segments[index]}。",
-                    nameof(path));
+                throw new ArgumentException($"成就记录路径包含无效字段：{segments[index]}。", nameof(path));
             }
         }
 

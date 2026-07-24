@@ -10,10 +10,7 @@ internal sealed class SuspendedGameProcess : IDisposable
     private bool _keepRunningOnDispose;
     private bool _disposed;
 
-    private SuspendedGameProcess(
-        int processId,
-        nint processHandle,
-        nint mainThreadHandle)
+    private SuspendedGameProcess(int processId, nint processHandle, nint mainThreadHandle)
     {
         ProcessId = processId;
         _processHandle = processHandle;
@@ -31,27 +28,23 @@ internal sealed class SuspendedGameProcess : IDisposable
         }
     }
 
-    public static unsafe SuspendedGameProcess Start(
-        string executablePath)
+    public static unsafe SuspendedGameProcess Start(string executablePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
 
         var fullPath = Path.GetFullPath(executablePath);
-        var workingDirectory = Path.GetDirectoryName(fullPath)
-            ?? throw new InvalidOperationException(
-                "无法确定游戏工作目录。");
+        var workingDirectory =
+            Path.GetDirectoryName(fullPath) ?? throw new InvalidOperationException("无法确定游戏工作目录。");
         var commandLine = $"\"{fullPath}\"".ToCharArray();
         Array.Resize(ref commandLine, commandLine.Length + 1);
 
-        var startupInfo = new NativeMethods.StartupInfo
-        {
-            Size = checked((uint)sizeof(NativeMethods.StartupInfo))
-        };
+        var startupInfo = new NativeMethods.StartupInfo { Size = checked((uint)sizeof(NativeMethods.StartupInfo)) };
 
         NativeMethods.ProcessInformation processInformation;
         fixed (char* commandLinePointer = commandLine)
         {
-            if (!NativeMethods.CreateProcess(
+            if (
+                !NativeMethods.CreateProcess(
                     fullPath,
                     commandLinePointer,
                     0,
@@ -61,10 +54,11 @@ internal sealed class SuspendedGameProcess : IDisposable
                     0,
                     workingDirectory,
                     ref startupInfo,
-                    out processInformation))
+                    out processInformation
+                )
+            )
             {
-                throw NewWin32Exception(
-                    "无法以挂起状态启动绝区零");
+                throw NewWin32Exception("无法以挂起状态启动绝区零");
             }
         }
 
@@ -73,17 +67,14 @@ internal sealed class SuspendedGameProcess : IDisposable
             return new SuspendedGameProcess(
                 checked((int)processInformation.ProcessId),
                 processInformation.Process,
-                processInformation.Thread);
+                processInformation.Thread
+            );
         }
         catch
         {
-            _ = NativeMethods.TerminateProcess(
-                processInformation.Process,
-                1);
-            _ = NativeMethods.CloseHandle(
-                processInformation.Thread);
-            _ = NativeMethods.CloseHandle(
-                processInformation.Process);
+            _ = NativeMethods.TerminateProcess(processInformation.Process, 1);
+            _ = NativeMethods.CloseHandle(processInformation.Thread);
+            _ = NativeMethods.CloseHandle(processInformation.Process);
             throw;
         }
     }
@@ -96,8 +87,7 @@ internal sealed class SuspendedGameProcess : IDisposable
             return;
         }
 
-        var previousCount = NativeMethods.ResumeThread(
-            _mainThreadHandle);
+        var previousCount = NativeMethods.ResumeThread(_mainThreadHandle);
         if (previousCount == uint.MaxValue)
         {
             throw NewWin32Exception("恢复游戏主线程失败");
@@ -111,23 +101,19 @@ internal sealed class SuspendedGameProcess : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_resumed)
         {
-            throw new InvalidOperationException(
-                "不能保留尚未恢复的游戏进程。");
+            throw new InvalidOperationException("不能保留尚未恢复的游戏进程。");
         }
 
         _keepRunningOnDispose = true;
     }
 
-    public async Task WaitForExitAsync(
-        CancellationToken cancellationToken)
+    public async Task WaitForExitAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         while (true)
         {
-            var waitResult = NativeMethods.WaitForSingleObject(
-                _processHandle,
-                0);
+            var waitResult = NativeMethods.WaitForSingleObject(_processHandle, 0);
             if (waitResult == NativeMethods.WaitObject0)
             {
                 return;
@@ -140,8 +126,7 @@ internal sealed class SuspendedGameProcess : IDisposable
 
             if (waitResult != NativeMethods.WaitTimeout)
             {
-                throw new InvalidOperationException(
-                    $"等待游戏进程返回未知状态 0x{waitResult:X8}。");
+                throw new InvalidOperationException($"等待游戏进程返回未知状态 0x{waitResult:X8}。");
             }
 
             await Task.Delay(250, cancellationToken);
@@ -159,36 +144,26 @@ internal sealed class SuspendedGameProcess : IDisposable
 
         if (!_keepRunningOnDispose && _processHandle != 0)
         {
-            _ = NativeMethods.TerminateProcess(
-                _processHandle,
-                1);
-            _ = NativeMethods.WaitForSingleObject(
-                _processHandle,
-                5_000);
+            _ = NativeMethods.TerminateProcess(_processHandle, 1);
+            _ = NativeMethods.WaitForSingleObject(_processHandle, 5_000);
         }
 
         if (_mainThreadHandle != 0)
         {
-            _ = NativeMethods.CloseHandle(
-                _mainThreadHandle);
+            _ = NativeMethods.CloseHandle(_mainThreadHandle);
             _mainThreadHandle = 0;
         }
 
         if (_processHandle != 0)
         {
-            _ = NativeMethods.CloseHandle(
-                _processHandle);
+            _ = NativeMethods.CloseHandle(_processHandle);
             _processHandle = 0;
         }
     }
 
-    internal static Win32Exception NewWin32Exception(
-        string operation)
+    internal static Win32Exception NewWin32Exception(string operation)
     {
-        var error = System.Runtime.InteropServices.Marshal
-            .GetLastWin32Error();
-        return new Win32Exception(
-            error,
-            $"{operation}（Win32 {error}）");
+        var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+        return new Win32Exception(error, $"{operation}（Win32 {error}）");
     }
 }

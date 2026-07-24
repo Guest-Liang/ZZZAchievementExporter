@@ -5,14 +5,15 @@ internal enum ProtoWireType : byte
     Varint = 0,
     Fixed64 = 1,
     LengthDelimited = 2,
-    Fixed32 = 5
+    Fixed32 = 5,
 }
 
 internal readonly record struct ProtoField(
     uint Number,
     ProtoWireType WireType,
     ulong Varint,
-    ReadOnlyMemory<byte> Bytes);
+    ReadOnlyMemory<byte> Bytes
+);
 
 internal sealed class ProtoMessage
 {
@@ -28,9 +29,7 @@ internal static class ProtoWire
 {
     private const int MaximumFieldsPerMessage = 65_536;
 
-    public static bool TryParse(
-        ReadOnlyMemory<byte> data,
-        out ProtoMessage? message)
+    public static bool TryParse(ReadOnlyMemory<byte> data, out ProtoMessage? message)
     {
         message = null;
         if (data.IsEmpty)
@@ -44,17 +43,18 @@ internal static class ProtoWire
 
         while (offset < span.Length)
         {
-            if (fields.Count >= MaximumFieldsPerMessage
+            if (
+                fields.Count >= MaximumFieldsPerMessage
                 || !TryReadVarint(span, ref offset, out var rawTag)
-                || rawTag > uint.MaxValue)
+                || rawTag > uint.MaxValue
+            )
             {
                 return false;
             }
 
             var fieldNumber = (uint)(rawTag >> 3);
             var rawWireType = (byte)(rawTag & 7);
-            if (fieldNumber == 0
-                || fieldNumber > 0x1FFF_FFFF)
+            if (fieldNumber == 0 || fieldNumber > 0x1FFF_FFFF)
             {
                 return false;
             }
@@ -67,11 +67,7 @@ internal static class ProtoWire
                         return false;
                     }
 
-                    fields.Add(new ProtoField(
-                        fieldNumber,
-                        ProtoWireType.Varint,
-                        value,
-                        ReadOnlyMemory<byte>.Empty));
+                    fields.Add(new ProtoField(fieldNumber, ProtoWireType.Varint, value, ReadOnlyMemory<byte>.Empty));
                     break;
 
                 case (byte)ProtoWireType.Fixed64:
@@ -80,34 +76,24 @@ internal static class ProtoWire
                         return false;
                     }
 
-                    fields.Add(new ProtoField(
-                        fieldNumber,
-                        ProtoWireType.Fixed64,
-                        0,
-                        ReadOnlyMemory<byte>.Empty));
+                    fields.Add(new ProtoField(fieldNumber, ProtoWireType.Fixed64, 0, ReadOnlyMemory<byte>.Empty));
                     break;
 
                 case (byte)ProtoWireType.LengthDelimited:
-                    if (!TryReadVarint(span, ref offset, out var rawLength)
-                        || rawLength > int.MaxValue)
+                    if (!TryReadVarint(span, ref offset, out var rawLength) || rawLength > int.MaxValue)
                     {
                         return false;
                     }
 
                     var length = (int)rawLength;
-                    if (length < 0
-                        || offset > span.Length - length)
+                    if (length < 0 || offset > span.Length - length)
                     {
                         return false;
                     }
 
                     var bytes = data.Slice(offset, length);
                     offset += length;
-                    fields.Add(new ProtoField(
-                        fieldNumber,
-                        ProtoWireType.LengthDelimited,
-                        0,
-                        bytes));
+                    fields.Add(new ProtoField(fieldNumber, ProtoWireType.LengthDelimited, 0, bytes));
                     break;
 
                 case (byte)ProtoWireType.Fixed32:
@@ -116,11 +102,7 @@ internal static class ProtoWire
                         return false;
                     }
 
-                    fields.Add(new ProtoField(
-                        fieldNumber,
-                        ProtoWireType.Fixed32,
-                        0,
-                        ReadOnlyMemory<byte>.Empty));
+                    fields.Add(new ProtoField(fieldNumber, ProtoWireType.Fixed32, 0, ReadOnlyMemory<byte>.Empty));
                     break;
 
                 default:
@@ -137,10 +119,7 @@ internal static class ProtoWire
         return true;
     }
 
-    private static bool TryReadVarint(
-        ReadOnlySpan<byte> span,
-        ref int offset,
-        out ulong value)
+    private static bool TryReadVarint(ReadOnlySpan<byte> span, ref int offset, out ulong value)
     {
         value = 0;
 
@@ -167,10 +146,7 @@ internal static class ProtoWire
         return false;
     }
 
-    private static bool TryAdvance(
-        ReadOnlySpan<byte> span,
-        ref int offset,
-        int count)
+    private static bool TryAdvance(ReadOnlySpan<byte> span, ref int offset, int count)
     {
         if (offset > span.Length - count)
         {

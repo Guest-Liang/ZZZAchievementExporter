@@ -17,11 +17,7 @@ public static class HookExports
             return 1;
         }
 
-        _worker = new Thread(Run)
-        {
-            IsBackground = true,
-            Name = "ZZZae Hook Worker"
-        };
+        _worker = new Thread(Run) { IsBackground = true, Name = "ZZZae Hook Worker" };
         _worker.Start();
         return 0;
     }
@@ -39,8 +35,7 @@ public static class HookExports
         try
         {
             FrameTransport.Connect();
-            var hookRva = PacketHook.WaitForModuleAndInstall(
-                TimeSpan.FromMinutes(2));
+            var hookRva = PacketHook.WaitForModuleAndInstall(TimeSpan.FromMinutes(2));
             FrameTransport.SendReady(hookRva);
             FrameTransport.Pump();
         }

@@ -14,47 +14,56 @@ internal static unsafe class PacketHook
 
     private static readonly byte[] Pattern =
     [
-        0x41, 0x57, 0x41, 0x56, 0x41, 0x55,
-        0x41, 0x54, 0x56, 0x57, 0x55, 0x53,
-        0x48, 0x83, 0xEC, 0x48, 0x45, 0x89,
-        0xCD, 0x44, 0x89, 0xC7, 0x49, 0x89,
-        0xD4
+        0x41,
+        0x57,
+        0x41,
+        0x56,
+        0x41,
+        0x55,
+        0x41,
+        0x54,
+        0x56,
+        0x57,
+        0x55,
+        0x53,
+        0x48,
+        0x83,
+        0xEC,
+        0x48,
+        0x45,
+        0x89,
+        0xCD,
+        0x44,
+        0x89,
+        0xC7,
+        0x49,
+        0x89,
+        0xD4,
     ];
 
-    private static readonly byte[] OriginalBytes =
-        new byte[PatchSize];
+    private static readonly byte[] OriginalBytes = new byte[PatchSize];
 
     private static nint _target;
     private static nint _trampoline;
     private static int _installed;
 
-    private static delegate* unmanaged<
-        nint,
-        nint,
-        uint,
-        int,
-        byte,
-        int> _original;
+    private static delegate* unmanaged<nint, nint, uint, int, byte, int> _original;
 
-    public static ulong WaitForModuleAndInstall(
-        TimeSpan timeout)
+    public static ulong WaitForModuleAndInstall(TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         nint moduleBase;
 
-        while ((moduleBase = NativeMethods.GetModuleHandle(
-                   "GameAssembly.dll")) == 0)
+        while ((moduleBase = NativeMethods.GetModuleHandle("GameAssembly.dll")) == 0)
         {
             if (FrameTransport.IsShutdownRequested)
             {
-                throw new OperationCanceledException(
-                    "Hook 已请求停止。");
+                throw new OperationCanceledException("Hook 已请求停止。");
             }
 
             if (DateTime.UtcNow >= deadline)
             {
-                throw new TimeoutException(
-                    "等待 GameAssembly.dll 加载超时。");
+                throw new TimeoutException("等待 GameAssembly.dll 加载超时。");
             }
 
             Thread.Sleep(25);
@@ -67,8 +76,7 @@ internal static unsafe class PacketHook
 
     public static void Uninstall()
     {
-        if (Interlocked.Exchange(ref _installed, 0) == 0
-            || _target == 0)
+        if (Interlocked.Exchange(ref _installed, 0) == 0 || _target == 0)
         {
             return;
         }
@@ -78,11 +86,9 @@ internal static unsafe class PacketHook
 
     private static void RestoreOriginalBytes()
     {
-        if (!NativeMethods.VirtualProtect(
-                _target,
-                PatchSize,
-                NativeMethods.PageExecuteReadWrite,
-                out var oldProtection))
+        if (
+            !NativeMethods.VirtualProtect(_target, PatchSize, NativeMethods.PageExecuteReadWrite, out var oldProtection)
+        )
         {
             return;
         }
@@ -91,50 +97,26 @@ internal static unsafe class PacketHook
         {
             fixed (byte* source = OriginalBytes)
             {
-                Buffer.MemoryCopy(
-                    source,
-                    (void*)_target,
-                    PatchSize,
-                    PatchSize);
+                Buffer.MemoryCopy(source, (void*)_target, PatchSize, PatchSize);
             }
         }
         finally
         {
-            _ = NativeMethods.VirtualProtect(
-                _target,
-                PatchSize,
-                oldProtection,
-                out _);
-            _ = NativeMethods.FlushInstructionCache(
-                NativeMethods.GetCurrentProcess(),
-                _target,
-                PatchSize);
+            _ = NativeMethods.VirtualProtect(_target, PatchSize, oldProtection, out _);
+            _ = NativeMethods.FlushInstructionCache(NativeMethods.GetCurrentProcess(), _target, PatchSize);
         }
     }
 
     [UnmanagedCallersOnly]
-    private static int Detour(
-        nint parser,
-        nint managedArray,
-        uint offset,
-        int availableLength,
-        byte alternateDecrypt)
+    private static int Detour(nint parser, nint managedArray, uint offset, int availableLength, byte alternateDecrypt)
     {
-        var result = _original(
-            parser,
-            managedArray,
-            offset,
-            availableLength,
-            alternateDecrypt);
+        var result = _original(parser, managedArray, offset, availableLength, alternateDecrypt);
 
         if (result == 1)
         {
             try
             {
-                Capture(
-                    managedArray,
-                    offset,
-                    availableLength);
+                Capture(managedArray, offset, availableLength);
             }
             catch
             {
@@ -145,13 +127,9 @@ internal static unsafe class PacketHook
         return result;
     }
 
-    private static void Capture(
-        nint managedArray,
-        uint offset,
-        int availableLength)
+    private static void Capture(nint managedArray, uint offset, int availableLength)
     {
-        if (managedArray == 0
-            || availableLength < 16)
+        if (managedArray == 0 || availableLength < 16)
         {
             return;
         }
@@ -182,42 +160,26 @@ internal static unsafe class PacketHook
             return;
         }
 
-        var totalLength = 16UL
-            + headerLength
-            + bodyLength;
-        if (totalLength > (ulong)availableLength
-            || totalLength > remainingArrayLength)
+        var totalLength = 16UL + headerLength + bodyLength;
+        if (totalLength > (ulong)availableLength || totalLength > remainingArrayLength)
         {
             return;
         }
 
-        var header = new ReadOnlySpan<byte>(
-            packet + 12,
-            headerLength);
-        var body = new ReadOnlySpan<byte>(
-            packet + 12 + headerLength,
-            checked((int)bodyLength));
-        var tail = packet
-            + 12
-            + headerLength
-            + bodyLength;
+        var header = new ReadOnlySpan<byte>(packet + 12, headerLength);
+        var body = new ReadOnlySpan<byte>(packet + 12 + headerLength, checked((int)bodyLength));
+        var tail = packet + 12 + headerLength + bodyLength;
         if (ReadBigEndianUInt32(tail) != TailMagic)
         {
             return;
         }
 
-        _ = FrameTransport.TryEnqueuePacket(
-            commandId,
-            header,
-            body);
+        _ = FrameTransport.TryEnqueuePacket(commandId, header, body);
     }
 
     private static void Install(nint target)
     {
-        if (Interlocked.CompareExchange(
-                ref _installed,
-                1,
-                0) != 0)
+        if (Interlocked.CompareExchange(ref _installed, 1, 0) != 0)
         {
             return;
         }
@@ -230,87 +192,54 @@ internal static unsafe class PacketHook
             _trampoline = NativeMethods.VirtualAlloc(
                 0,
                 (nuint)trampolineSize,
-                NativeMethods.MemCommit
-                | NativeMethods.MemReserve,
-                NativeMethods.PageExecuteReadWrite);
+                NativeMethods.MemCommit | NativeMethods.MemReserve,
+                NativeMethods.PageExecuteReadWrite
+            );
             if (_trampoline == 0)
             {
-                throw new InvalidOperationException(
-                    "VirtualAlloc 无法创建 Hook trampoline。");
+                throw new InvalidOperationException("VirtualAlloc 无法创建 Hook trampoline。");
             }
 
             fixed (byte* destination = OriginalBytes)
             {
-                Buffer.MemoryCopy(
-                    (void*)target,
-                    destination,
-                    PatchSize,
-                    PatchSize);
+                Buffer.MemoryCopy((void*)target, destination, PatchSize, PatchSize);
             }
             originalCaptured = true;
 
-            Buffer.MemoryCopy(
-                (void*)target,
-                (void*)_trampoline,
-                PatchSize,
-                PatchSize);
-            WriteAbsoluteJump(
-                (byte*)_trampoline + PatchSize,
-                target + PatchSize);
+            Buffer.MemoryCopy((void*)target, (void*)_trampoline, PatchSize, PatchSize);
+            WriteAbsoluteJump((byte*)_trampoline + PatchSize, target + PatchSize);
 
-            _original = (delegate* unmanaged<
-                nint,
-                nint,
-                uint,
-                int,
-                byte,
-                int>)_trampoline;
+            _original = (delegate* unmanaged<nint, nint, uint, int, byte, int>)_trampoline;
 
-            if (!NativeMethods.VirtualProtect(
+            if (
+                !NativeMethods.VirtualProtect(
                     target,
                     PatchSize,
                     NativeMethods.PageExecuteReadWrite,
-                    out var oldProtection))
+                    out var oldProtection
+                )
+            )
             {
-                throw new InvalidOperationException(
-                    "VirtualProtect 无法修改目标函数。");
+                throw new InvalidOperationException("VirtualProtect 无法修改目标函数。");
             }
 
             try
             {
-                WriteAbsoluteJump(
-                    (byte*)target,
-                    (nint)(delegate* unmanaged<
-                        nint,
-                        nint,
-                        uint,
-                        int,
-                        byte,
-                        int>)&Detour);
+                WriteAbsoluteJump((byte*)target, (nint)(delegate* unmanaged<nint, nint, uint, int, byte, int>)&Detour);
 
-                for (var index = JumpSize;
-                     index < PatchSize;
-                     index++)
+                for (var index = JumpSize; index < PatchSize; index++)
                 {
                     *((byte*)target + index) = 0x90;
                 }
             }
             finally
             {
-                _ = NativeMethods.VirtualProtect(
-                    target,
-                    PatchSize,
-                    oldProtection,
-                    out _);
+                _ = NativeMethods.VirtualProtect(target, PatchSize, oldProtection, out _);
             }
 
-            if (!NativeMethods.FlushInstructionCache(
-                    NativeMethods.GetCurrentProcess(),
-                    target,
-                    PatchSize))
+            if (!NativeMethods.FlushInstructionCache(NativeMethods.GetCurrentProcess(), target, PatchSize))
             {
-                throw new InvalidOperationException(
-                    "FlushInstructionCache 失败。");
+                throw new InvalidOperationException("FlushInstructionCache 失败。");
             }
         }
         catch
@@ -330,16 +259,13 @@ internal static unsafe class PacketHook
         var image = (byte*)moduleBase;
         if (*(ushort*)image != 0x5A4D)
         {
-            throw new InvalidDataException(
-                "GameAssembly.dll 不含有效的 DOS 头。");
+            throw new InvalidDataException("GameAssembly.dll 不含有效的 DOS 头。");
         }
 
         var ntOffset = *(int*)(image + 0x3C);
-        if (ntOffset <= 0
-            || *(uint*)(image + ntOffset) != 0x0000_4550)
+        if (ntOffset <= 0 || *(uint*)(image + ntOffset) != 0x0000_4550)
         {
-            throw new InvalidDataException(
-                "GameAssembly.dll 不含有效的 PE 头。");
+            throw new InvalidDataException("GameAssembly.dll 不含有效的 PE 头。");
         }
 
         var fileHeader = image + ntOffset + sizeof(uint);
@@ -350,42 +276,32 @@ internal static unsafe class PacketHook
         var sectionHeader = optionalHeader + optionalHeaderSize;
         nint found = 0;
 
-        for (var sectionIndex = 0;
-             sectionIndex < sectionCount;
-             sectionIndex++)
+        for (var sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++)
         {
             var section = sectionHeader + sectionIndex * 40;
             var virtualSize = *(uint*)(section + 8);
             var virtualAddress = *(uint*)(section + 12);
             var characteristics = *(uint*)(section + 36);
 
-            if ((characteristics
-                    & NativeMethods.ImageScnMemExecute) == 0
+            if (
+                (characteristics & NativeMethods.ImageScnMemExecute) == 0
                 || virtualSize < Pattern.Length
-                || virtualAddress >= imageSize)
+                || virtualAddress >= imageSize
+            )
             {
                 continue;
             }
 
-            var safeSize = Math.Min(
-                virtualSize,
-                imageSize - virtualAddress);
+            var safeSize = Math.Min(virtualSize, imageSize - virtualAddress);
             var start = image + virtualAddress;
-            var endOffset = safeSize
-                - (uint)Pattern.Length;
+            var endOffset = safeSize - (uint)Pattern.Length;
 
             fixed (byte* pattern = Pattern)
             {
-                for (uint offset = 0;
-                     offset <= endOffset;
-                     offset++)
+                for (uint offset = 0; offset <= endOffset; offset++)
                 {
                     var candidate = start + offset;
-                    if (*candidate != *pattern
-                        || !Matches(
-                            candidate,
-                            pattern,
-                            Pattern.Length))
+                    if (*candidate != *pattern || !Matches(candidate, pattern, Pattern.Length))
                     {
                         continue;
                     }
@@ -393,8 +309,8 @@ internal static unsafe class PacketHook
                     if (found != 0)
                     {
                         throw new InvalidDataException(
-                            "明文包解析器特征在 GameAssembly.dll "
-                            + "中出现多次，拒绝安装 Hook。");
+                            "明文包解析器特征在 GameAssembly.dll 中出现多次，拒绝安装 Hook。"
+                        );
                     }
 
                     found = (nint)candidate;
@@ -404,36 +320,23 @@ internal static unsafe class PacketHook
 
         if (found == 0)
         {
-            throw new InvalidDataException(
-                "未找到 ZZZae 支持的明文包解析器特征。"
-                + "当前游戏版本可能需要更新特征。");
+            throw new InvalidDataException("未找到 ZZZae 支持的明文包解析器特征。当前游戏版本可能需要更新特征。");
         }
 
         var functionOffset = (ulong)(found - moduleBase);
-        var validationLength = Math.Min(
-            0xC00UL,
-            imageSize - functionOffset);
-        if (!ContainsUInt32(
-                (byte*)found,
-                validationLength,
-                HeadMagic)
-            || !ContainsUInt32(
-                (byte*)found,
-                validationLength,
-                TailMagic))
+        var validationLength = Math.Min(0xC00UL, imageSize - functionOffset);
+        if (
+            !ContainsUInt32((byte*)found, validationLength, HeadMagic)
+            || !ContainsUInt32((byte*)found, validationLength, TailMagic)
+        )
         {
-            throw new InvalidDataException(
-                "特征候选不同时包含包头和包尾魔数，"
-                + "拒绝安装 Hook。");
+            throw new InvalidDataException("特征候选不同时包含包头和包尾魔数，拒绝安装 Hook。");
         }
 
         return found;
     }
 
-    private static bool Matches(
-        byte* candidate,
-        byte* pattern,
-        int length)
+    private static bool Matches(byte* candidate, byte* pattern, int length)
     {
         for (var index = 0; index < length; index++)
         {
@@ -446,20 +349,17 @@ internal static unsafe class PacketHook
         return true;
     }
 
-    private static bool ContainsUInt32(
-        byte* start,
-        ulong length,
-        uint value)
+    private static bool ContainsUInt32(byte* start, ulong length, uint value)
     {
         var bytes = (byte*)&value;
-        for (ulong offset = 0;
-             offset + sizeof(uint) <= length;
-             offset++)
+        for (ulong offset = 0; offset + sizeof(uint) <= length; offset++)
         {
-            if (start[offset] == bytes[0]
+            if (
+                start[offset] == bytes[0]
                 && start[offset + 1] == bytes[1]
                 && start[offset + 2] == bytes[2]
-                && start[offset + 3] == bytes[3])
+                && start[offset + 3] == bytes[3]
+            )
             {
                 return true;
             }
@@ -468,9 +368,7 @@ internal static unsafe class PacketHook
         return false;
     }
 
-    private static void WriteAbsoluteJump(
-        byte* destination,
-        nint target)
+    private static void WriteAbsoluteJump(byte* destination, nint target)
     {
         *(ushort*)destination = 0x25FF;
         *(uint*)(destination + 2) = 0;
@@ -484,9 +382,6 @@ internal static unsafe class PacketHook
 
     private static uint ReadBigEndianUInt32(byte* value)
     {
-        return (uint)(value[0] << 24
-            | value[1] << 16
-            | value[2] << 8
-            | value[3]);
+        return (uint)(value[0] << 24 | value[1] << 16 | value[2] << 8 | value[3]);
     }
 }

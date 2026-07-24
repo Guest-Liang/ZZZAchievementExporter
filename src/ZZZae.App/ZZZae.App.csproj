@@ -28,12 +28,18 @@
     <EmbeddedResource Include="$(HookBinaryPath)" LogicalName="ZZZae.Hook.dll" />
   </ItemGroup>
 
-  <Target Name="ValidateEmbeddedHook"
-          BeforeTargets="PrepareForPublish"
-          Condition="'$(RequireEmbeddedHook)' == 'true'">
-    <Error Condition="'$(HookBinaryPath)' == ''"
-           Text="HookBinaryPath must point to the published NativeAOT hook library." />
-    <Error Condition="!Exists('$(HookBinaryPath)')"
-           Text="The hook library was not found at '$(HookBinaryPath)'." />
+  <Target
+    Name="ValidateEmbeddedHook"
+    BeforeTargets="PrepareForPublish"
+    Condition="'$(RequireEmbeddedHook)' == 'true'"
+  >
+    <Error
+      Condition="'$(HookBinaryPath)' == ''"
+      Text="HookBinaryPath must point to the published NativeAOT hook library."
+    />
+    <Error
+      Condition="!Exists('$(HookBinaryPath)')"
+      Text="The hook library was not found at '$(HookBinaryPath)'."
+    />
   </Target>
 </Project>
