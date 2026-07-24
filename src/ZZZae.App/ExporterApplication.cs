@@ -88,14 +88,15 @@ internal static class ExporterApplication
     {
         EnsureGameIsNotRunning();
 
-        var gamePath = LocateGame(configuredGamePath);
-        if (gamePath is null)
+        var gameSelection = LocateGame(configuredGamePath);
+        if (gameSelection is null)
         {
             ApplicationLog.WriteDiagnostic("用户在游戏路径选择阶段退出。");
             return UserRequestedExitCode;
         }
 
-        var gameVersion = ValidateChinaProductionBuild(gamePath);
+        var gamePath = gameSelection.ExecutablePath;
+        var gameVersion = gameSelection.Version;
         if (!ElevationManager.IsAdministrator())
         {
             Console.WriteLine($"游戏：{gamePath}");
@@ -180,12 +181,12 @@ internal static class ExporterApplication
         }
     }
 
-    private static string? LocateGame(string? configuredGamePath)
+    private static GameSelection? LocateGame(string? configuredGamePath)
     {
         if (configuredGamePath is not null)
         {
             Console.WriteLine("游戏路径来源：命令行 --game");
-            return GameLocator.ResolveChinaGameExecutable(configuredGamePath);
+            return ResolveAndValidateGame(configuredGamePath);
         }
 
         var registryGamePath = GameLocator.TryFindChinaGameExecutable();
@@ -194,12 +195,13 @@ internal static class ExporterApplication
             if (registryGamePath is not null)
             {
                 Console.WriteLine("游戏路径来源：注册表（非交互启动）");
-                return registryGamePath;
+                return CreateGameSelection(registryGamePath);
             }
 
             throw MissingRegistryGamePath();
         }
 
+        var selectedOption = registryGamePath is null ? 1 : 0;
         while (true)
         {
             Console.WriteLine("请选择游戏路径获取方式（↑/↓ 选择，Enter 确认）：");
@@ -212,7 +214,8 @@ internal static class ExporterApplication
                     : "手动粘贴或拖入游戏目录 / ZenlessZoneZero.exe",
                 "退出 ZZZae",
             };
-            var selected = ReadSelectionMenu(options, registryGamePath is null ? 1 : 0);
+            var selected = ReadSelectionMenu(options, selectedOption);
+            selectedOption = selected;
             Console.WriteLine($"已选择：{options[selected]}");
 
             if (selected == 0)
@@ -220,12 +223,34 @@ internal static class ExporterApplication
                 registryGamePath = GameLocator.TryFindChinaGameExecutable();
                 if (registryGamePath is not null)
                 {
-                    Console.WriteLine("游戏路径来源：注册表");
-                    return registryGamePath;
+                    try
+                    {
+                        var selection = CreateGameSelection(registryGamePath);
+                        Console.WriteLine("游戏路径来源：注册表");
+                        return selection;
+                    }
+                    catch (Exception exception) when (IsGamePathValidationException(exception))
+                    {
+                        ApplicationLog.WriteException("注册表中的游戏路径未通过校验。", exception);
+                        Console.Error.WriteLine($"注册表中的游戏路径无效：{exception.Message}");
+                        registryGamePath = null;
+                        selectedOption = 1;
+                        if (!WaitForReturnToPathMenu())
+                        {
+                            return null;
+                        }
+
+                        continue;
+                    }
                 }
 
                 Console.Error.WriteLine("未检测到有效的游戏注册表路径，请重新选择。");
-                Console.WriteLine();
+                selectedOption = 1;
+                if (!WaitForReturnToPathMenu())
+                {
+                    return null;
+                }
+
                 continue;
             }
 
@@ -249,12 +274,52 @@ internal static class ExporterApplication
                     return null;
                 }
 
-                Console.WriteLine("游戏路径来源：交互输入");
-                return GameLocator.ResolveChinaGameExecutable(enteredPath);
+                try
+                {
+                    var selection = ResolveAndValidateGame(enteredPath);
+                    Console.WriteLine("游戏路径来源：交互输入");
+                    return selection;
+                }
+                catch (Exception exception) when (IsGamePathValidationException(exception))
+                {
+                    ApplicationLog.WriteException("手动指定的游戏路径未通过校验。", exception);
+                    Console.Error.WriteLine($"手动指定的游戏路径无效：{exception.Message}");
+                    selectedOption = 1;
+                    if (!WaitForReturnToPathMenu())
+                    {
+                        return null;
+                    }
+                }
+
+                continue;
             }
 
             return null;
         }
+    }
+
+    private static GameSelection ResolveAndValidateGame(string configuredPath)
+    {
+        var executablePath = GameLocator.ResolveChinaGameExecutable(configuredPath);
+        return CreateGameSelection(executablePath);
+    }
+
+    private static GameSelection CreateGameSelection(string executablePath)
+    {
+        return new GameSelection(executablePath, ValidateChinaProductionBuild(executablePath));
+    }
+
+    private static bool IsGamePathValidationException(Exception exception)
+    {
+        return exception is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException;
+    }
+
+    private static bool WaitForReturnToPathMenu()
+    {
+        Console.Write("按 Enter 返回路径选择菜单……");
+        var canContinue = Console.ReadLine() is not null;
+        Console.WriteLine();
+        return canContinue;
     }
 
     private static int ReadSelectionMenu(IReadOnlyList<string> options, int selected)
@@ -573,6 +638,8 @@ internal static class ExporterApplication
             }
         }
     }
+
+    private sealed record GameSelection(string ExecutablePath, string Version);
 
     private sealed record ExportPaths(string FullBackup, string Liyin);
 }
