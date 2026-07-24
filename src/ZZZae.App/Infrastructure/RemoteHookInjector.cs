@@ -37,8 +37,8 @@ internal sealed class RemoteHookSession : IDisposable
         }
         catch
         {
-            // The game may already have exited. Hook-side pipe cleanup
-            // also removes the detour when the host disconnects.
+            // The game may already have exited. Cleanup must not mask
+            // the primary export result or game-process cleanup.
         }
     }
 

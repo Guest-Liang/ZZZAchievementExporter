@@ -7,7 +7,6 @@ internal sealed class SuspendedGameProcess : IDisposable
     private nint _processHandle;
     private nint _mainThreadHandle;
     private bool _resumed;
-    private bool _keepRunningOnDispose;
     private bool _disposed;
 
     private SuspendedGameProcess(int processId, nint processHandle, nint mainThreadHandle)
@@ -96,15 +95,46 @@ internal sealed class SuspendedGameProcess : IDisposable
         _resumed = true;
     }
 
-    public void KeepRunningOnDispose()
+    public void Terminate(uint exitCode)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!_resumed)
+
+        var currentState = NativeMethods.WaitForSingleObject(_processHandle, 0);
+        if (currentState == NativeMethods.WaitObject0)
         {
-            throw new InvalidOperationException("不能保留尚未恢复的游戏进程。");
+            return;
         }
 
-        _keepRunningOnDispose = true;
+        if (currentState == NativeMethods.WaitFailed)
+        {
+            throw NewWin32Exception("检查游戏进程状态失败");
+        }
+
+        if (currentState != NativeMethods.WaitTimeout)
+        {
+            throw new InvalidOperationException($"检查游戏进程返回未知状态 0x{currentState:X8}。");
+        }
+
+        if (!NativeMethods.TerminateProcess(_processHandle, exitCode))
+        {
+            throw NewWin32Exception("关闭游戏进程失败");
+        }
+
+        var waitResult = NativeMethods.WaitForSingleObject(_processHandle, 5_000);
+        if (waitResult == NativeMethods.WaitTimeout)
+        {
+            throw new TimeoutException("等待游戏进程关闭超时。");
+        }
+
+        if (waitResult == NativeMethods.WaitFailed)
+        {
+            throw NewWin32Exception("等待游戏进程关闭失败");
+        }
+
+        if (waitResult != NativeMethods.WaitObject0)
+        {
+            throw new InvalidOperationException($"等待游戏进程关闭返回未知状态 0x{waitResult:X8}。");
+        }
     }
 
     public async Task WaitForExitAsync(CancellationToken cancellationToken)
@@ -140,13 +170,19 @@ internal sealed class SuspendedGameProcess : IDisposable
             return;
         }
 
-        _disposed = true;
-
-        if (!_keepRunningOnDispose && _processHandle != 0)
+        if (_processHandle != 0)
         {
-            _ = NativeMethods.TerminateProcess(_processHandle, 1);
-            _ = NativeMethods.WaitForSingleObject(_processHandle, 5_000);
+            try
+            {
+                Terminate(1);
+            }
+            catch
+            {
+                // Dispose is a final best-effort cleanup path.
+            }
         }
+
+        _disposed = true;
 
         if (_mainThreadHandle != 0)
         {

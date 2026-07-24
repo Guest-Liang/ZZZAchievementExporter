@@ -45,7 +45,19 @@ internal static class GameLocator
             );
         }
 
-        var expandedPath = Environment.ExpandEnvironmentVariables(configuredPath.Trim().Trim('"'));
+        var normalizedPath = configuredPath.Trim();
+        if (
+            normalizedPath.Length >= 2
+            && (
+                (normalizedPath[0] == '"' && normalizedPath[^1] == '"')
+                || (normalizedPath[0] == '\'' && normalizedPath[^1] == '\'')
+            )
+        )
+        {
+            normalizedPath = normalizedPath[1..^1];
+        }
+
+        var expandedPath = Environment.ExpandEnvironmentVariables(normalizedPath);
         var fullPath = Path.GetFullPath(expandedPath);
         string executablePath;
 
