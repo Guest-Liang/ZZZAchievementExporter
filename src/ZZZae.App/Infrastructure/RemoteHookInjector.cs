@@ -3,79 +3,13 @@ using System.Text;
 
 namespace ZZZae.App.Infrastructure;
 
-internal sealed class RemoteHookSession : IDisposable
-{
-    private const string StartExport = "ZZZaeHookMain";
-    private const string ShutdownExport = "ZZZaeHookShutdown";
-
-    private readonly SuspendedGameProcess _game;
-    private readonly string _hookPath;
-    private readonly nint _remoteModuleBase;
-    private int _shutdown;
-
-    internal RemoteHookSession(SuspendedGameProcess game, string hookPath, nint remoteModuleBase)
-    {
-        _game = game;
-        _hookPath = hookPath;
-        _remoteModuleBase = remoteModuleBase;
-    }
-
-    public void Start()
-    {
-        var exitCode = InvokeExport(StartExport);
-        if (exitCode != 0)
-        {
-            throw new InvalidOperationException($"Hook 初始化入口返回 {exitCode}。");
-        }
-    }
-
-    public void Dispose()
-    {
-        try
-        {
-            Shutdown();
-        }
-        catch
-        {
-            // The game may already have exited. Cleanup must not mask
-            // the primary export result or game-process cleanup.
-        }
-    }
-
-    public void Shutdown()
-    {
-        if (Interlocked.Exchange(ref _shutdown, 1) != 0)
-        {
-            return;
-        }
-
-        var exitCode = InvokeExport(ShutdownExport);
-        if (exitCode != 0)
-        {
-            throw new InvalidOperationException($"Hook 关闭入口返回 {exitCode}。");
-        }
-    }
-
-    private uint InvokeExport(string exportName)
-    {
-        var exportRva = RemoteHookInjector.GetExportRva(_hookPath, exportName);
-        var remoteAddress = checked(_remoteModuleBase + exportRva);
-        return RemoteHookInjector.RunRemoteThread(
-            _game.ProcessHandle,
-            remoteAddress,
-            0,
-            TimeSpan.FromSeconds(30),
-            exportName
-        );
-    }
-}
-
 internal static unsafe class RemoteHookInjector
 {
     private const string Kernel32Name = "kernel32.dll";
     private const string LoadLibraryName = "LoadLibraryW";
+    private const string StartExport = "ZZZaeHookMain";
 
-    public static RemoteHookSession Inject(SuspendedGameProcess game, string hookPath)
+    public static void Inject(SuspendedGameProcess game, string hookPath)
     {
         ArgumentNullException.ThrowIfNull(game);
         ArgumentException.ThrowIfNullOrWhiteSpace(hookPath);
@@ -113,12 +47,16 @@ internal static unsafe class RemoteHookInjector
         LoadRemoteLibrary(game.ProcessHandle, remoteLoadLibrary, fullHookPath);
 
         var remoteHook = FindRemoteModuleBase(game.ProcessId, Path.GetFileName(fullHookPath), TimeSpan.FromSeconds(10));
-        var session = new RemoteHookSession(game, fullHookPath, remoteHook);
-        session.Start();
-        return session;
+        var startRva = GetExportRva(fullHookPath, StartExport);
+        var startAddress = checked(remoteHook + startRva);
+        var exitCode = RunRemoteThread(game.ProcessHandle, startAddress, 0, TimeSpan.FromSeconds(30), StartExport);
+        if (exitCode != 0)
+        {
+            throw new InvalidOperationException($"Hook 初始化入口返回 {exitCode}。");
+        }
     }
 
-    internal static nint GetExportRva(string modulePath, string exportName)
+    private static nint GetExportRva(string modulePath, string exportName)
     {
         var module = NativeMethods.LoadLibraryEx(modulePath, 0, NativeMethods.DontResolveDllReferences);
         if (module == 0)
@@ -142,7 +80,7 @@ internal static unsafe class RemoteHookInjector
         }
     }
 
-    internal static uint RunRemoteThread(
+    private static uint RunRemoteThread(
         nint process,
         nint startAddress,
         nint parameter,

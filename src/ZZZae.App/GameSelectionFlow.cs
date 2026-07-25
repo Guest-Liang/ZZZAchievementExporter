@@ -1,0 +1,249 @@
+using ZZZae.App.Infrastructure;
+
+namespace ZZZae.App;
+
+internal static class GameSelectionFlow
+{
+    private const string ChinaProductionMarker = "CNPRODWin";
+
+    public static GameSelection? Select(string? configuredGamePath)
+    {
+        if (configuredGamePath is not null)
+        {
+            Console.WriteLine("游戏路径来源：命令行 --game");
+            return ResolveAndValidateGame(configuredGamePath);
+        }
+
+        var registryGamePath = GameLocator.TryFindChinaGameExecutable();
+        if (Console.IsInputRedirected)
+        {
+            if (registryGamePath is not null)
+            {
+                Console.WriteLine("游戏路径来源：注册表（非交互启动）");
+                return CreateGameSelection(registryGamePath);
+            }
+
+            throw MissingRegistryGamePath();
+        }
+
+        var selectedOption = registryGamePath is null ? 1 : 0;
+        while (true)
+        {
+            Console.WriteLine("请选择游戏路径获取方式（↑/↓ 选择，Enter 确认）：");
+            var isAdministrator = ElevationManager.IsAdministrator();
+            var options = new[]
+            {
+                registryGamePath is null ? "从注册表读取游戏路径（未检测到有效路径）" : "从注册表读取游戏路径",
+                isAdministrator
+                    ? "手动粘贴游戏目录 / ZenlessZoneZero.exe"
+                    : "手动粘贴或拖入游戏目录 / ZenlessZoneZero.exe",
+                "退出 ZZZae",
+            };
+            var selected = ReadSelectionMenu(options, selectedOption);
+            selectedOption = selected;
+            Console.WriteLine($"已选择：{options[selected]}");
+
+            if (selected == 0)
+            {
+                registryGamePath = GameLocator.TryFindChinaGameExecutable();
+                if (registryGamePath is not null)
+                {
+                    try
+                    {
+                        var selection = CreateGameSelection(registryGamePath);
+                        Console.WriteLine("游戏路径来源：注册表");
+                        return selection;
+                    }
+                    catch (Exception exception) when (IsGamePathValidationException(exception))
+                    {
+                        ApplicationLog.WriteException("注册表中的游戏路径未通过校验。", exception);
+                        Console.Error.WriteLine($"注册表中的游戏路径无效：{exception.Message}");
+                        registryGamePath = null;
+                        selectedOption = 1;
+                        if (!WaitForReturnToPathMenu())
+                        {
+                            return null;
+                        }
+
+                        continue;
+                    }
+                }
+
+                Console.Error.WriteLine("未检测到有效的游戏注册表路径，请重新选择。");
+                selectedOption = 1;
+                if (!WaitForReturnToPathMenu())
+                {
+                    return null;
+                }
+
+                continue;
+            }
+
+            if (selected == 1)
+            {
+                if (isAdministrator)
+                {
+                    Console.WriteLine(
+                        "当前窗口具有管理员权限，Windows 会阻止从普通权限资源管理器拖入；请复制并粘贴完整路径。"
+                    );
+                }
+                else
+                {
+                    Console.WriteLine("可以把游戏目录或 ZenlessZoneZero.exe 拖入当前窗口，也可以粘贴完整路径。");
+                }
+
+                Console.Write("游戏路径（直接按 Enter 取消）：");
+                var enteredPath = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(enteredPath))
+                {
+                    return null;
+                }
+
+                try
+                {
+                    var selection = ResolveAndValidateGame(enteredPath);
+                    Console.WriteLine("游戏路径来源：交互输入");
+                    return selection;
+                }
+                catch (Exception exception) when (IsGamePathValidationException(exception))
+                {
+                    ApplicationLog.WriteException("手动指定的游戏路径未通过校验。", exception);
+                    Console.Error.WriteLine($"手动指定的游戏路径无效：{exception.Message}");
+                    selectedOption = 1;
+                    if (!WaitForReturnToPathMenu())
+                    {
+                        return null;
+                    }
+                }
+
+                continue;
+            }
+
+            return null;
+        }
+    }
+
+    private static GameSelection ResolveAndValidateGame(string configuredPath)
+    {
+        var executablePath = GameLocator.ResolveChinaGameExecutable(configuredPath);
+        return CreateGameSelection(executablePath);
+    }
+
+    private static GameSelection CreateGameSelection(string executablePath)
+    {
+        return new GameSelection(executablePath, ValidateChinaProductionBuild(executablePath));
+    }
+
+    private static bool IsGamePathValidationException(Exception exception)
+    {
+        return exception is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException;
+    }
+
+    private static bool WaitForReturnToPathMenu()
+    {
+        Console.Write("按 Enter 返回路径选择菜单……");
+        var canContinue = Console.ReadLine() is not null;
+        Console.WriteLine();
+        return canContinue;
+    }
+
+    private static int ReadSelectionMenu(IReadOnlyList<string> options, int selected)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(selected);
+        if (options.Count == 0 || selected >= options.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(selected));
+        }
+
+        var menuTop = Console.CursorTop;
+        while (true)
+        {
+            RenderSelectionMenu(options, selected, menuTop);
+
+            switch (Console.ReadKey(intercept: true).Key)
+            {
+                case ConsoleKey.UpArrow:
+                    selected = selected == 0 ? options.Count - 1 : selected - 1;
+                    break;
+
+                case ConsoleKey.DownArrow:
+                    selected = (selected + 1) % options.Count;
+                    break;
+
+                case ConsoleKey.Enter:
+                    Console.SetCursorPosition(0, menuTop + options.Count);
+                    return selected;
+
+                case ConsoleKey.Escape:
+                    Console.SetCursorPosition(0, menuTop + options.Count);
+                    return options.Count - 1;
+            }
+        }
+    }
+
+    private static void RenderSelectionMenu(IReadOnlyList<string> options, int selected, int menuTop)
+    {
+        var clearWidth = Math.Max(1, Console.BufferWidth - 1);
+        using var output = new StreamWriter(
+            Console.OpenStandardOutput(),
+            Console.OutputEncoding,
+            bufferSize: 256,
+            leaveOpen: true
+        )
+        {
+            AutoFlush = true,
+        };
+
+        for (var index = 0; index < options.Count; index++)
+        {
+            Console.SetCursorPosition(0, menuTop + index);
+            output.Write(new string(' ', clearWidth));
+            Console.SetCursorPosition(0, menuTop + index);
+            output.Write(index == selected ? $"> {options[index]}" : $"  {options[index]}");
+        }
+
+        Console.SetCursorPosition(0, menuTop + options.Count);
+    }
+
+    private static FileNotFoundException MissingRegistryGamePath()
+    {
+        return new FileNotFoundException(
+            """
+            没有在注册表 HKCU\Software\miHoYo\HYP\1_1\nap_cn 的 GameInstallPath 找到国服游戏。
+            非交互启动时请使用 --game 指定游戏目录或 ZenlessZoneZero.exe 完整路径。
+            """
+        );
+    }
+
+    private static string ValidateChinaProductionBuild(string gameExecutablePath)
+    {
+        var gameDirectory =
+            Path.GetDirectoryName(gameExecutablePath) ?? throw new InvalidDataException("无法确定游戏安装目录。");
+        var versionPath = Path.Combine(gameDirectory, "version_info");
+        if (!File.Exists(versionPath))
+        {
+            throw new FileNotFoundException("游戏目录缺少 version_info，无法确认国服正式渠道。", versionPath);
+        }
+
+        var buildMarker = File.ReadAllText(versionPath).Trim();
+        if (!buildMarker.StartsWith(ChinaProductionMarker, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"当前构建标记为 {buildMarker}，不是 ZZZae 支持的国服 Windows 正式渠道。");
+        }
+
+        var gameAssemblyPath = Path.Combine(gameDirectory, "GameAssembly.dll");
+        if (!File.Exists(gameAssemblyPath))
+        {
+            throw new FileNotFoundException("游戏目录缺少 GameAssembly.dll。", gameAssemblyPath);
+        }
+
+        // Do not reject a build by whole-file hash or fixed RVA.
+        // Harmless hot updates may change either. The injected hook
+        // instead requires a unique executable-section signature plus
+        // the packet framing magic, and the host requires the verified
+        // full-snapshot command and protobuf record structure.
+        return buildMarker;
+    }
+}
+
+internal sealed record GameSelection(string ExecutablePath, string Version);

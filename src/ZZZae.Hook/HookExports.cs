@@ -22,14 +22,6 @@ public static class HookExports
         return 0;
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "ZZZaeHookShutdown")]
-    public static int Shutdown()
-    {
-        FrameTransport.RequestShutdown();
-        PacketHook.Uninstall();
-        return 0;
-    }
-
     private static void Run()
     {
         try

@@ -21,8 +21,6 @@ internal static class FrameTransport
     private static int _shutdown;
     private static int _connected;
 
-    public static bool IsShutdownRequested => Volatile.Read(ref _shutdown) != 0;
-
     public static void Connect()
     {
         var pipeName = $"ZZZae-{Environment.ProcessId}";

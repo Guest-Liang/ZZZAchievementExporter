@@ -56,11 +56,6 @@ internal static unsafe class PacketHook
 
         while ((moduleBase = NativeMethods.GetModuleHandle("GameAssembly.dll")) == 0)
         {
-            if (FrameTransport.IsShutdownRequested)
-            {
-                throw new OperationCanceledException("Hook 已请求停止。");
-            }
-
             if (DateTime.UtcNow >= deadline)
             {
                 throw new TimeoutException("等待 GameAssembly.dll 加载超时。");
