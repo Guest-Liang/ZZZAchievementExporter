@@ -69,7 +69,7 @@ internal static class FrameTransport
         Span<byte> message = stackalloc byte[1 + sizeof(ulong) + sizeof(int)];
         message[0] = ReadyMessage;
         BinaryPrimitives.WriteUInt64LittleEndian(message[1..], rva);
-        BinaryPrimitives.WriteInt32LittleEndian(message[9..], PacketHook.PatternVersion);
+        BinaryPrimitives.WriteInt32LittleEndian(message[9..], PacketHook.LocatorVersion);
         SendMessage(message);
     }
 

@@ -7,7 +7,7 @@ namespace ZZZae.App.Infrastructure;
 
 internal abstract record HookMessage;
 
-internal sealed record HookReadyMessage(ulong ParserRva, int PatternVersion) : HookMessage;
+internal sealed record HookReadyMessage(ulong ParserRva, int LocatorVersion) : HookMessage;
 
 internal sealed record HookPacketMessage(CapturedPacket Packet) : HookMessage;
 

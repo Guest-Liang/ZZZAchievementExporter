@@ -140,7 +140,7 @@ internal static class AchievementExportSession
                     Console.WriteLine(
                         "Hook 已就绪：明文解析器 "
                             + $"RVA 0x{hookReady.ParserRva:X}，"
-                            + $"特征版本 {hookReady.PatternVersion}。"
+                            + $"定位版本 {hookReady.LocatorVersion}。"
                     );
                     break;
 
