@@ -51,21 +51,17 @@ internal static class AchievementExportSession
                 VerifiedAchievementProtocol,
                 cancellation.Token
             );
-            var outputs = await AchievementExportWriter.WriteAsync(snapshot, catalog, cancellation.Token);
-
             var completedCount = snapshot.Records.Count(static record => record.IsCompleted);
 
             Console.WriteLine();
             Console.WriteLine(
-                $"导出完成：识别 {snapshot.Records.Count} 条记录，"
+                $"快照获取完成：识别 {snapshot.Records.Count} 条记录，"
                     + $"其中已完成 {completedCount} 条；"
                     + $"元数据命中 {snapshot.CatalogMatchCount} 条，"
                     + $"未知 ID {snapshot.UnknownIdCount} 条。"
             );
-            Console.WriteLine($"完整备份：{outputs.FullBackup}");
-            Console.WriteLine($"Liyin 文件：{outputs.Liyin}");
 
-            Console.WriteLine("成就文件已写入，正在关闭本次由 ZZZae 启动的游戏……");
+            Console.WriteLine("正在关闭本次由 ZZZae 启动的游戏……");
             try
             {
                 game.Terminate(0);
@@ -73,10 +69,36 @@ internal static class AchievementExportSession
             }
             catch (Exception exception)
             {
-                ApplicationLog.WriteException("成就已成功导出，但主动关闭游戏失败。", exception);
-                Console.Error.WriteLine($"警告：成就已成功导出，但主动关闭游戏失败：{exception.Message}");
-                Console.Error.WriteLine("ZZZae 退出时会再次尝试关闭游戏；如果游戏仍在运行，请手动退出。");
+                ApplicationLog.WriteException("快照已取得，但主动关闭游戏失败。", exception);
+                Console.Error.WriteLine($"警告：快照已取得，但主动关闭游戏失败：{exception.Message}");
+                Console.Error.WriteLine("仍可继续导出；ZZZae 退出时会再次尝试关闭游戏。");
             }
+
+            var target = ExportSelectionFlow.Select(cancellation.Token);
+            var output = await AchievementExportWriter.WriteAsync(
+                snapshot,
+                catalog,
+                target,
+                cancellation.Token
+            );
+
+            Console.WriteLine();
+            var exportSummary = target switch
+            {
+                ExportTarget.AchievementBackup =>
+                    $"导出完成：完整保留 {snapshot.Records.Count} 条服务端成就记录，"
+                        + $"其中 {completedCount} 条有完成证据。",
+                ExportTarget.Liyin =>
+                    $"导出完成：写入 {completedCount} 条有完成证据的成就 ID；"
+                        + $"完整快照共 {snapshot.Records.Count} 条。",
+                ExportTarget.UiafExperimental =>
+                    $"导出完成：写入服务端实际返回的 {snapshot.Records.Count} 条成就记录，"
+                        + $"其中已完成 {completedCount} 条、未完成 "
+                        + $"{snapshot.Records.Count - completedCount} 条；未合成未下发的互斥分支。",
+                _ => throw new ArgumentOutOfRangeException(nameof(target), target, "未知导出目标。"),
+            };
+            Console.WriteLine(exportSummary);
+            Console.WriteLine($"{output.DisplayName}：{output.Path}");
 
             return 0;
         }

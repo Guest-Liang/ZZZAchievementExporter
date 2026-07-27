@@ -150,7 +150,7 @@ internal sealed class ApplicationLog : IDisposable
             $"进程架构：{RuntimeInformation.ProcessArchitecture}；"
                 + $"运行时：{RuntimeInformation.FrameworkDescription}"
         );
-        _sink.WriteLine("日志不记录成就原始包；分享前仍请检查其中的本机路径和错误信息。");
+        _sink.WriteLine("日志不记录网络包或成就记录内容；分享前仍请检查其中的本机路径和错误信息。");
         _sink.WriteLine("================================================================");
     }
 

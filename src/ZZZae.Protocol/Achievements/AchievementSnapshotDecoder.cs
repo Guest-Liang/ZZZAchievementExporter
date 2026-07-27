@@ -66,8 +66,6 @@ public sealed class AchievementSnapshotDecoder
             CatalogMatchCount = catalogMatches,
             UnknownIdCount = records.Count - catalogMatches,
             Records = records,
-            RawHeader = packet.Header.ToArray(),
-            RawPayload = packet.Body.ToArray(),
         };
         return true;
     }

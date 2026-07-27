@@ -39,7 +39,12 @@ internal static class GameSelectionFlow
                     : "手动粘贴或拖入游戏目录 / ZenlessZoneZero.exe",
                 "退出 ZZZae",
             };
-            var selected = ReadSelectionMenu(options, selectedOption);
+            var selected = ConsoleSelectionMenu.Read(
+                options,
+                selectedOption,
+                CancellationToken.None,
+                escapeSelection: options.Length - 1
+            );
             selectedOption = selected;
             Console.WriteLine($"已选择：{options[selected]}");
 
@@ -145,64 +150,6 @@ internal static class GameSelectionFlow
         var canContinue = Console.ReadLine() is not null;
         Console.WriteLine();
         return canContinue;
-    }
-
-    private static int ReadSelectionMenu(IReadOnlyList<string> options, int selected)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(selected);
-        if (options.Count == 0 || selected >= options.Count)
-        {
-            throw new ArgumentOutOfRangeException(nameof(selected));
-        }
-
-        var menuTop = Console.CursorTop;
-        while (true)
-        {
-            RenderSelectionMenu(options, selected, menuTop);
-
-            switch (Console.ReadKey(intercept: true).Key)
-            {
-                case ConsoleKey.UpArrow:
-                    selected = selected == 0 ? options.Count - 1 : selected - 1;
-                    break;
-
-                case ConsoleKey.DownArrow:
-                    selected = (selected + 1) % options.Count;
-                    break;
-
-                case ConsoleKey.Enter:
-                    Console.SetCursorPosition(0, menuTop + options.Count);
-                    return selected;
-
-                case ConsoleKey.Escape:
-                    Console.SetCursorPosition(0, menuTop + options.Count);
-                    return options.Count - 1;
-            }
-        }
-    }
-
-    private static void RenderSelectionMenu(IReadOnlyList<string> options, int selected, int menuTop)
-    {
-        var clearWidth = Math.Max(1, Console.BufferWidth - 1);
-        using var output = new StreamWriter(
-            Console.OpenStandardOutput(),
-            Console.OutputEncoding,
-            bufferSize: 256,
-            leaveOpen: true
-        )
-        {
-            AutoFlush = true,
-        };
-
-        for (var index = 0; index < options.Count; index++)
-        {
-            Console.SetCursorPosition(0, menuTop + index);
-            output.Write(new string(' ', clearWidth));
-            Console.SetCursorPosition(0, menuTop + index);
-            output.Write(index == selected ? $"> {options[index]}" : $"  {options[index]}");
-        }
-
-        Console.SetCursorPosition(0, menuTop + options.Count);
     }
 
     private static FileNotFoundException MissingRegistryGamePath()

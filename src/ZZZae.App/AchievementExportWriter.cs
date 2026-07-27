@@ -2,6 +2,7 @@ using ZZZae.App.Infrastructure;
 using ZZZae.Core.Achievements;
 using ZZZae.Formats.Backup;
 using ZZZae.Formats.Liyin;
+using ZZZae.Formats.Uiaf;
 using ZZZae.Protocol.Metadata;
 
 namespace ZZZae.App;
@@ -10,45 +11,49 @@ internal static class AchievementExportWriter
 {
     private static readonly TimeSpan ChinaStandardOffset = TimeSpan.FromHours(8);
 
-    public static async Task<ExportPaths> WriteAsync(
+    public static async Task<ExportResult> WriteAsync(
         AchievementSnapshot snapshot,
         AchievementCatalog catalog,
+        ExportTarget target,
         CancellationToken cancellationToken
     )
     {
         var stamp = snapshot.CapturedAt.ToOffset(ChinaStandardOffset).ToString("yyyyMMdd-HHmmss");
         var directory = Environment.CurrentDirectory;
-        var fullBackupPath = UniquePath(directory, $"ZZZae-full-{stamp}.json");
-        var liyinPath = UniquePath(directory, $"ZZZae-liyin-{stamp}.json");
-
-        var fullBackup = FullBackupExporter.Serialize(snapshot, catalog.LatestVersion, catalog.Count);
-        var liyin = LiyinExporter.Serialize(snapshot);
-
-        await AtomicFile.WriteAllTextAsync(fullBackupPath, fullBackup, cancellationToken);
-
-        try
+        string fileName;
+        string displayName;
+        string content;
+        switch (target)
         {
-            await AtomicFile.WriteAllTextAsync(liyinPath, liyin, cancellationToken);
-        }
-        catch
-        {
-            try
-            {
-                File.Delete(fullBackupPath);
-            }
-            catch (IOException)
-            {
-                // Preserve the valid full backup if rollback fails.
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Same as above.
-            }
+            case ExportTarget.AchievementBackup:
+                fileName = $"ZZZae-achievements-{stamp}.json";
+                displayName = "成就数据备份";
+                content = AchievementBackupExporter.Serialize(
+                    snapshot,
+                    catalog.LatestVersion,
+                    catalog.Count
+                );
+                break;
 
-            throw;
+            case ExportTarget.Liyin:
+                fileName = $"ZZZae-liyin-{stamp}.json";
+                displayName = "Liyin 格式";
+                content = LiyinExporter.Serialize(snapshot);
+                break;
+
+            case ExportTarget.UiafExperimental:
+                fileName = $"ZZZae-uiaf-{stamp}.json";
+                displayName = "实验性 UIAF（非官方）";
+                content = UiafExporter.Serialize(snapshot);
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(target), target, "未知导出目标。");
         }
 
-        return new ExportPaths(fullBackupPath, liyinPath);
+        var outputPath = UniquePath(directory, fileName);
+        await AtomicFile.WriteAllTextAsync(outputPath, content, cancellationToken);
+        return new ExportResult(displayName, outputPath);
     }
 
     private static string UniquePath(string directory, string fileName)
@@ -74,4 +79,4 @@ internal static class AchievementExportWriter
     }
 }
 
-internal sealed record ExportPaths(string FullBackup, string Liyin);
+internal sealed record ExportResult(string DisplayName, string Path);

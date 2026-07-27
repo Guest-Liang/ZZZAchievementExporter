@@ -21,8 +21,4 @@ public sealed record AchievementSnapshot
     public required int UnknownIdCount { get; init; }
 
     public required IReadOnlyList<AchievementRecord> Records { get; init; }
-
-    public required byte[] RawHeader { get; init; }
-
-    public required byte[] RawPayload { get; init; }
 }

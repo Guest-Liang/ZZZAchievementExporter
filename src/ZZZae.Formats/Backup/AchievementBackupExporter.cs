@@ -5,7 +5,7 @@ using ZZZae.Core.Achievements;
 
 namespace ZZZae.Formats.Backup;
 
-public static class FullBackupExporter
+public static class AchievementBackupExporter
 {
     private static readonly TimeSpan ChinaStandardOffset = TimeSpan.FromHours(8);
 
@@ -13,10 +13,10 @@ public static class FullBackupExporter
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        var document = new FullBackupDocument
+        var document = new AchievementBackupDocument
         {
-            Schema = "ZZZae.FullAchievementBackup",
-            SchemaVersion = 3,
+            Schema = "ZZZae.AchievementBackup",
+            SchemaVersion = 1,
             ExportApp = "ZZZae",
             CapturedAt = snapshot.CapturedAt.ToOffset(ChinaStandardOffset),
             GameVersion = snapshot.GameVersion,
@@ -33,12 +33,14 @@ public static class FullBackupExporter
                 UnknownIdCount = snapshot.UnknownIdCount,
             },
             Records = snapshot
-                .Records.Select(static record => new FullBackupRecord
+                .Records.Select(static record => new AchievementBackupRecord
                 {
                     Id = record.Id,
                     IsCompleted = record.IsCompleted,
                     FinishTimestamp = record.FinishTimestamp,
-                    FinishTimeUtc8 = NormalizeTimestamp(record.FinishTimestamp),
+                    FinishTimeUtc8 = AchievementTimestamp
+                        .Normalize(record.FinishTimestamp)
+                        ?.ToOffset(ChinaStandardOffset),
                     CompletedFlag = record.CompletedFlag,
                     RawVarints = record.RawVarints.ToDictionary(
                         static pair => pair.Key.ToString(CultureInfo.InvariantCulture),
@@ -46,38 +48,16 @@ public static class FullBackupExporter
                     ),
                 })
                 .ToArray(),
-            RawPacket = new RawPacketInfo { HeaderBase64 = snapshot.RawHeader, BodyBase64 = snapshot.RawPayload },
         };
 
-        return JsonSerializer.Serialize(document, FullBackupJsonContext.Default.FullBackupDocument);
-    }
-
-    private static DateTimeOffset? NormalizeTimestamp(long? raw)
-    {
-        if (raw is null or <= 0)
-        {
-            return null;
-        }
-
-        try
-        {
-            DateTimeOffset? timestamp = raw.Value switch
-            {
-                >= 1_000_000_000_000_000 => DateTimeOffset.FromUnixTimeMilliseconds(raw.Value / 1_000),
-                >= 1_000_000_000_000 => DateTimeOffset.FromUnixTimeMilliseconds(raw.Value),
-                >= 1_000_000_000 => DateTimeOffset.FromUnixTimeSeconds(raw.Value),
-                _ => null,
-            };
-            return timestamp?.ToOffset(ChinaStandardOffset);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return null;
-        }
+        return JsonSerializer.Serialize(
+            document,
+            AchievementBackupJsonContext.Default.AchievementBackupDocument
+        );
     }
 }
 
-internal sealed class FullBackupDocument
+internal sealed class AchievementBackupDocument
 {
     [JsonPropertyName("schema")]
     public required string Schema { get; init; }
@@ -104,10 +84,7 @@ internal sealed class FullBackupDocument
     public required DetectionInfo Detection { get; init; }
 
     [JsonPropertyName("records")]
-    public required FullBackupRecord[] Records { get; init; }
-
-    [JsonPropertyName("raw_packet")]
-    public required RawPacketInfo RawPacket { get; init; }
+    public required AchievementBackupRecord[] Records { get; init; }
 }
 
 internal sealed class DetectionInfo
@@ -134,7 +111,7 @@ internal sealed class DetectionInfo
     public required int UnknownIdCount { get; init; }
 }
 
-internal sealed class FullBackupRecord
+internal sealed class AchievementBackupRecord
 {
     [JsonPropertyName("id")]
     public required uint Id { get; init; }
@@ -155,15 +132,6 @@ internal sealed class FullBackupRecord
     public required Dictionary<string, ulong> RawVarints { get; init; }
 }
 
-internal sealed class RawPacketInfo
-{
-    [JsonPropertyName("header_base64")]
-    public required byte[] HeaderBase64 { get; init; }
-
-    [JsonPropertyName("body_base64")]
-    public required byte[] BodyBase64 { get; init; }
-}
-
 [JsonSourceGenerationOptions(WriteIndented = true)]
-[JsonSerializable(typeof(FullBackupDocument))]
-internal sealed partial class FullBackupJsonContext : JsonSerializerContext;
+[JsonSerializable(typeof(AchievementBackupDocument))]
+internal sealed partial class AchievementBackupJsonContext : JsonSerializerContext;
