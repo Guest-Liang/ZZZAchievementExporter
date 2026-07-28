@@ -33,13 +33,15 @@ internal sealed class HookPipeServer : IAsyncDisposable
 
     public HookPipeServer(int processId)
     {
+        var pipeName = $"ZZZae-{processId}";
         _pipe = new NamedPipeServerStream(
-            $"ZZZae-{processId}",
+            pipeName,
             PipeDirection.In,
             1,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly
         );
+        ApplicationLog.WriteDebug($"已创建 Hook 命名管道：{pipeName}", writeToConsole: false);
     }
 
     public Task WaitForConnectionAsync(CancellationToken cancellationToken)
@@ -54,7 +56,7 @@ internal sealed class HookPipeServer : IAsyncDisposable
         var messageLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBuffer);
         if (messageLength is < 1 or > MaximumMessageLength)
         {
-            throw new InvalidDataException($"Hook 消息长度 {messageLength} 无效。");
+            throw new InvalidDataException($"Hook 消息长度 {messageLength} 无效");
         }
 
         var message = GC.AllocateUninitializedArray<byte>(messageLength);
@@ -66,7 +68,7 @@ internal sealed class HookPipeServer : IAsyncDisposable
             PacketMessage => ParsePacket(message),
             ErrorMessage => ParseError(message),
             UidMessage => ParseUid(message),
-            _ => throw new InvalidDataException($"Hook 消息类型 {message[0]} 未知。"),
+            _ => throw new InvalidDataException($"Hook 消息类型 {message[0]} 未知"),
         };
     }
 
@@ -79,7 +81,7 @@ internal sealed class HookPipeServer : IAsyncDisposable
     {
         if (message.Length != 29)
         {
-            throw new InvalidDataException("Hook 就绪消息长度无效。");
+            throw new InvalidDataException("Hook 就绪消息长度无效");
         }
 
         return new HookReadyMessage(
@@ -95,20 +97,16 @@ internal sealed class HookPipeServer : IAsyncDisposable
     {
         if (message.Length < 15)
         {
-            throw new InvalidDataException("Hook 数据包消息过短。");
+            throw new InvalidDataException("Hook 数据包消息过短");
         }
 
         var uid = BinaryPrimitives.ReadUInt32LittleEndian(message[1..5]);
         var commandId = BinaryPrimitives.ReadUInt16LittleEndian(message[5..7]);
         var headerLength = BinaryPrimitives.ReadInt32LittleEndian(message[7..11]);
         var bodyLength = BinaryPrimitives.ReadInt32LittleEndian(message[11..15]);
-        if (
-            headerLength < 0
-            || bodyLength < 0
-            || (long)headerLength + bodyLength != message.Length - 15L
-        )
+        if (headerLength < 0 || bodyLength < 0 || (long)headerLength + bodyLength != message.Length - 15L)
         {
-            throw new InvalidDataException("Hook 数据包中的头部或正文长度无效。");
+            throw new InvalidDataException("Hook 数据包中的头部或正文长度无效");
         }
 
         var header = message.Slice(15, headerLength).ToArray();
@@ -130,13 +128,13 @@ internal sealed class HookPipeServer : IAsyncDisposable
     {
         if (message.Length < 5)
         {
-            throw new InvalidDataException("Hook 错误消息过短。");
+            throw new InvalidDataException("Hook 错误消息过短");
         }
 
         var textLength = BinaryPrimitives.ReadInt32LittleEndian(message[1..5]);
         if (textLength < 0 || textLength != message.Length - 5)
         {
-            throw new InvalidDataException("Hook 错误消息文本长度无效。");
+            throw new InvalidDataException("Hook 错误消息文本长度无效");
         }
 
         return new HookErrorMessage(Encoding.UTF8.GetString(message[5..]));
@@ -146,7 +144,7 @@ internal sealed class HookPipeServer : IAsyncDisposable
     {
         if (message.Length != 5)
         {
-            throw new InvalidDataException("Hook UID 消息长度无效。");
+            throw new InvalidDataException("Hook UID 消息长度无效");
         }
 
         return new HookUidMessage(BinaryPrimitives.ReadUInt32LittleEndian(message[1..5]));

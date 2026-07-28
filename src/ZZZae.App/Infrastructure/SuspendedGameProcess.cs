@@ -33,7 +33,7 @@ internal sealed class SuspendedGameProcess : IDisposable
 
         var fullPath = Path.GetFullPath(executablePath);
         var workingDirectory =
-            Path.GetDirectoryName(fullPath) ?? throw new InvalidOperationException("无法确定游戏工作目录。");
+            Path.GetDirectoryName(fullPath) ?? throw new InvalidOperationException("无法确定游戏工作目录");
         var commandLine = $"\"{fullPath}\"".ToCharArray();
         Array.Resize(ref commandLine, commandLine.Length + 1);
 
@@ -63,11 +63,16 @@ internal sealed class SuspendedGameProcess : IDisposable
 
         try
         {
-            return new SuspendedGameProcess(
+            var game = new SuspendedGameProcess(
                 checked((int)processInformation.ProcessId),
                 processInformation.Process,
                 processInformation.Thread
             );
+            ApplicationLog.WriteInfo(
+                $"游戏进程已以挂起状态启动：PID {game.ProcessId}；程序 {fullPath}；工作目录 {workingDirectory}",
+                writeToConsole: false
+            );
+            return game;
         }
         catch
         {
@@ -93,6 +98,10 @@ internal sealed class SuspendedGameProcess : IDisposable
         }
 
         _resumed = true;
+        ApplicationLog.WriteInfo(
+            $"游戏主线程已恢复：PID {ProcessId}；此前挂起计数 {previousCount}",
+            writeToConsole: false
+        );
     }
 
     public void Terminate(uint exitCode)
@@ -112,7 +121,7 @@ internal sealed class SuspendedGameProcess : IDisposable
 
         if (currentState != NativeMethods.WaitTimeout)
         {
-            throw new InvalidOperationException($"检查游戏进程返回未知状态 0x{currentState:X8}。");
+            throw new InvalidOperationException($"检查游戏进程返回未知状态 0x{currentState:X8}");
         }
 
         if (!NativeMethods.TerminateProcess(_processHandle, exitCode))
@@ -123,7 +132,7 @@ internal sealed class SuspendedGameProcess : IDisposable
         var waitResult = NativeMethods.WaitForSingleObject(_processHandle, 5_000);
         if (waitResult == NativeMethods.WaitTimeout)
         {
-            throw new TimeoutException("等待游戏进程关闭超时。");
+            throw new TimeoutException("等待游戏进程关闭超时");
         }
 
         if (waitResult == NativeMethods.WaitFailed)
@@ -133,7 +142,7 @@ internal sealed class SuspendedGameProcess : IDisposable
 
         if (waitResult != NativeMethods.WaitObject0)
         {
-            throw new InvalidOperationException($"等待游戏进程关闭返回未知状态 0x{waitResult:X8}。");
+            throw new InvalidOperationException($"等待游戏进程关闭返回未知状态 0x{waitResult:X8}");
         }
     }
 
@@ -156,7 +165,7 @@ internal sealed class SuspendedGameProcess : IDisposable
 
             if (waitResult != NativeMethods.WaitTimeout)
             {
-                throw new InvalidOperationException($"等待游戏进程返回未知状态 0x{waitResult:X8}。");
+                throw new InvalidOperationException($"等待游戏进程返回未知状态 0x{waitResult:X8}");
             }
 
             await Task.Delay(250, cancellationToken);
@@ -176,9 +185,9 @@ internal sealed class SuspendedGameProcess : IDisposable
             {
                 Terminate(1);
             }
-            catch
+            catch (Exception exception)
             {
-                // Dispose is a final best-effort cleanup path.
+                ApplicationLog.WriteWarningException("最终清理游戏进程失败", exception);
             }
         }
 

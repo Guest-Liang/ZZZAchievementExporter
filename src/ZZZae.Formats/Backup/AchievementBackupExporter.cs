@@ -9,12 +9,7 @@ public static class AchievementBackupExporter
 {
     private static readonly TimeSpan ChinaStandardOffset = TimeSpan.FromHours(8);
 
-    public static string Serialize(
-        AchievementSnapshot snapshot,
-        uint uid,
-        string metadataVersion,
-        int metadataCount
-    )
+    public static string Serialize(AchievementSnapshot snapshot, uint uid, string metadataVersion, int metadataCount)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentOutOfRangeException.ThrowIfZero(uid);
@@ -57,10 +52,7 @@ public static class AchievementBackupExporter
                 .ToArray(),
         };
 
-        return JsonSerializer.Serialize(
-            document,
-            AchievementBackupJsonContext.Default.AchievementBackupDocument
-        );
+        return JsonSerializer.Serialize(document, AchievementBackupJsonContext.Default.AchievementBackupDocument);
     }
 }
 

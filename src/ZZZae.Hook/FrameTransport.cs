@@ -41,13 +41,7 @@ internal static class FrameTransport
         }
 
         var messageLength = checked(
-            1
-                + sizeof(uint)
-                + sizeof(ushort)
-                + sizeof(int)
-                + sizeof(int)
-                + header.Length
-                + body.Length
+            1 + sizeof(uint) + sizeof(ushort) + sizeof(int) + sizeof(int) + header.Length + body.Length
         );
         if (messageLength > MaximumMessageBytes)
         {
@@ -78,14 +72,8 @@ internal static class FrameTransport
 
     public static void SendReady(uint parserRva, CurrentUidLocation uidLocation)
     {
-        Span<byte> message = stackalloc byte[
-            1
-                + sizeof(ulong)
-                + sizeof(int)
-                + sizeof(ulong)
-                + sizeof(int)
-                + sizeof(int)
-        ];
+        Span<byte> message =
+            stackalloc byte[1 + sizeof(ulong) + sizeof(int) + sizeof(ulong) + sizeof(int) + sizeof(int)];
         message[0] = ReadyMessage;
         BinaryPrimitives.WriteUInt64LittleEndian(message[1..], parserRva);
         BinaryPrimitives.WriteInt32LittleEndian(message[9..], PacketHook.LocatorVersion);
@@ -107,12 +95,7 @@ internal static class FrameTransport
             var now = Environment.TickCount64;
             if (now >= nextUidPoll)
             {
-                PollUid(
-                    uidReader,
-                    ref candidateUid,
-                    ref publishedUid,
-                    ref stableObservations
-                );
+                PollUid(uidReader, ref candidateUid, ref publishedUid, ref stableObservations);
                 nextUidPoll = now + UidPollIntervalMilliseconds;
             }
 
@@ -121,10 +104,7 @@ internal static class FrameTransport
                 Interlocked.Add(ref _queuedBytes, -message.Length);
                 if (message.Length >= 1 + sizeof(uint) && message[0] == PacketMessage)
                 {
-                    BinaryPrimitives.WriteUInt32LittleEndian(
-                        message.AsSpan(1, sizeof(uint)),
-                        publishedUid
-                    );
+                    BinaryPrimitives.WriteUInt32LittleEndian(message.AsSpan(1, sizeof(uint)), publishedUid);
                 }
 
                 SendMessage(message);
@@ -191,10 +171,7 @@ internal static class FrameTransport
 
         if (candidateUid == observedUid)
         {
-            stableObservations = Math.Min(
-                stableObservations + 1,
-                StableUidObservationCount
-            );
+            stableObservations = Math.Min(stableObservations + 1, StableUidObservationCount);
         }
         else
         {
@@ -202,10 +179,7 @@ internal static class FrameTransport
             stableObservations = 1;
         }
 
-        if (
-            stableObservations >= StableUidObservationCount
-            && publishedUid != candidateUid
-        )
+        if (stableObservations >= StableUidObservationCount && publishedUid != candidateUid)
         {
             publishedUid = candidateUid;
             SendUid(publishedUid);

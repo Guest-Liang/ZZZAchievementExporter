@@ -36,9 +36,7 @@ public static class UiafExporter
                         Current = ReadCurrent(record),
                         Status = record.IsCompleted ? FinishedStatus : UnfinishedStatus,
                         Timestamp =
-                            AchievementTimestamp
-                                .Normalize(record.FinishTimestamp)
-                                ?.ToUnixTimeSeconds()
+                            AchievementTimestamp.Normalize(record.FinishTimestamp)?.ToUnixTimeSeconds()
                             ?? UnknownCompletionTimestamp,
                     })
                     .ToArray(),

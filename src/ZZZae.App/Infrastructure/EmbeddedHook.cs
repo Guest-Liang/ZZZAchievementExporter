@@ -23,11 +23,18 @@ internal static class EmbeddedHook
 
         Directory.CreateDirectory(directory);
 
-        if (!HasSameContent(destination, data))
+        var reused = HasSameContent(destination, data);
+        if (!reused)
         {
             File.WriteAllBytes(destination, data);
         }
 
+        ApplicationLog.WriteInfo($"Hook 临时文件：{destination}", writeToConsole: false);
+        ApplicationLog.WriteDebug(
+            $"Hook 资源：{data.Length} bytes；SHA-256 {digest}；"
+                + $"临时文件{(reused ? "已存在并复用" : "已重新写入")}",
+            writeToConsole: false
+        );
         return destination;
     }
 

@@ -19,7 +19,7 @@ internal static class ElevationManager
         ArgumentException.ThrowIfNullOrWhiteSpace(gameExecutablePath);
 
         var executablePath =
-            Environment.ProcessPath ?? throw new InvalidOperationException("无法确定 ZZZae 可执行文件路径。");
+            Environment.ProcessPath ?? throw new InvalidOperationException("无法确定 ZZZae 可执行文件路径");
         var startInfo = new ProcessStartInfo
         {
             FileName = executablePath,
@@ -29,15 +29,22 @@ internal static class ElevationManager
         };
         startInfo.ArgumentList.Add("--game");
         startInfo.ArgumentList.Add(Path.GetFullPath(gameExecutablePath));
+        ApplicationLog.WriteInfo(
+            $"准备请求管理员权限：程序 {executablePath}；"
+                + $"工作目录 {startInfo.WorkingDirectory}；"
+                + $"游戏 {Path.GetFullPath(gameExecutablePath)}",
+            writeToConsole: false
+        );
 
         try
         {
             using var process =
-                Process.Start(startInfo) ?? throw new InvalidOperationException("Windows 没有启动管理员权限实例。");
+                Process.Start(startInfo) ?? throw new InvalidOperationException("Windows 没有启动管理员权限实例");
+            ApplicationLog.WriteDebug($"管理员权限实例已创建：PID {process.Id}", writeToConsole: false);
         }
         catch (Win32Exception exception) when (exception.NativeErrorCode == OperationCanceledError)
         {
-            throw new OperationCanceledException("用户取消了管理员权限请求。", exception);
+            throw new OperationCanceledException("用户取消了管理员权限请求", exception);
         }
     }
 }

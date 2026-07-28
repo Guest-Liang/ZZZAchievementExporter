@@ -13,10 +13,10 @@ internal static class ExporterApplication
 
     public static async Task<int> RunAsync(string[] args)
     {
-        Console.WriteLine("ZZZae — 绝区零成就导出");
-        Console.WriteLine("https://github.com/Guest-Liang/ZZZAchievementExporter");
+        ApplicationLog.WriteInfo("ZZZae — 绝区零成就导出");
+        ApplicationLog.WriteInfo("https://github.com/Guest-Liang/ZZZAchievementExporter");
         Console.WriteLine();
-        Console.WriteLine(
+        ApplicationLog.WriteWarning(
             """
             免责声明：本工具是非官方第三方工具，运行时会向游戏进程加载临时 Hook，
             可能违反游戏规则或被反作弊系统识别，并可能导致账号限制或封禁。
@@ -26,20 +26,20 @@ internal static class ExporterApplication
         );
         if (ApplicationLog.CurrentFilePath is { } logPath)
         {
-            Console.WriteLine($"运行日志：{logPath}");
+            ApplicationLog.WriteInfo($"运行日志：{logPath}");
         }
         Console.WriteLine();
 
         if (!TryParseArguments(args, out var configuredGamePath, out var argumentError))
         {
-            Console.Error.WriteLine(argumentError);
+            ApplicationLog.WriteError(argumentError ?? "无法识别命令行参数");
             WriteUsage();
             return 2;
         }
 
         if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess)
         {
-            Console.Error.WriteLine("ZZZae 只支持 Windows x64。");
+            ApplicationLog.WriteError("ZZZae 只支持 Windows x64");
             return 2;
         }
 
@@ -49,19 +49,19 @@ internal static class ExporterApplication
         }
         catch (OperationCanceledException)
         {
-            ApplicationLog.WriteDiagnostic("用户取消导出；没有导出成就文件。");
-            Console.Error.WriteLine("已取消。");
+            ApplicationLog.WriteInfo("用户取消导出；没有导出成就文件", writeToConsole: false);
+            ApplicationLog.WriteInfo("已取消");
             return 3;
         }
         catch (Exception exception)
         {
-            ApplicationLog.WriteException("导出失败。", exception);
+            ApplicationLog.WriteException("导出失败", exception);
             Console.Error.WriteLine();
-            Console.Error.WriteLine($"导出失败：{exception.Message}");
-            Console.Error.WriteLine("没有导出不完整的成就文件。");
+            ApplicationLog.WriteError($"导出失败：{exception.Message}");
+            ApplicationLog.WriteError("没有导出不完整的成就文件");
             if (ApplicationLog.CurrentFilePath is { } failureLogPath)
             {
-                Console.Error.WriteLine($"详细信息已写入：{failureLogPath}");
+                ApplicationLog.WriteError($"详细信息已写入：{failureLogPath}");
             }
             return 1;
         }
@@ -74,7 +74,7 @@ internal static class ExporterApplication
         var gameSelection = GameSelectionFlow.Select(configuredGamePath);
         if (gameSelection is null)
         {
-            ApplicationLog.WriteDiagnostic("用户在游戏路径选择阶段退出。");
+            ApplicationLog.WriteInfo("用户在游戏路径选择阶段退出", writeToConsole: false);
             return UserRequestedExitCode;
         }
 
@@ -82,25 +82,25 @@ internal static class ExporterApplication
         var gameVersion = gameSelection.Version;
         if (!ElevationManager.IsAdministrator())
         {
-            Console.WriteLine($"游戏路径：{gamePath}");
-            Console.WriteLine($"游戏构建：{gameVersion}");
-            Console.WriteLine("游戏路径已确认，正在申请管理员权限……");
+            ApplicationLog.WriteInfo($"游戏路径：{gamePath}");
+            ApplicationLog.WriteInfo($"游戏构建：{gameVersion}");
+            ApplicationLog.WriteInfo("游戏路径已确认，正在申请管理员权限...");
             ElevationManager.RelaunchAsAdministrator(gamePath);
-            Console.WriteLine("管理员权限实例已启动，当前窗口即将关闭。");
+            ApplicationLog.WriteInfo("管理员权限实例已启动，当前窗口即将关闭");
             return RelaunchedAsAdministratorExitCode;
         }
 
         var hookPath =
             EmbeddedHook.TryExtract()
             ?? throw new InvalidOperationException(
-                @"当前构建没有内嵌 Hook DLL。请运行 publish.ps1 后使用 artifacts\publish\ZZZae.exe。"
+                "当前构建没有内嵌 Hook DLL。请运行 build.ps1 后使用 artifacts\\build 中带配置后缀的 EXE"
             );
         var catalog = AchievementCatalog.LoadBundled();
 
-        Console.WriteLine($"游戏路径：{gamePath}");
-        Console.WriteLine($"游戏构建：{gameVersion}");
-        Console.WriteLine($"成就元数据：{catalog.LatestVersion}" + $"（{catalog.Count} 项）");
-        Console.WriteLine("正在启动游戏");
+        ApplicationLog.WriteInfo($"游戏路径：{gamePath}");
+        ApplicationLog.WriteInfo($"游戏构建：{gameVersion}");
+        ApplicationLog.WriteInfo($"成就元数据：{catalog.LatestVersion}（{catalog.Count} 项）");
+        ApplicationLog.WriteInfo("正在启动游戏");
 
         return await AchievementExportSession.RunAsync(gamePath, gameVersion, hookPath, catalog);
     }
@@ -117,19 +117,19 @@ internal static class ExporterApplication
 
         if (!args[0].Equals("--game", StringComparison.Ordinal))
         {
-            error = "无法识别命令行参数。ZZZae 只支持可选参数 --game。";
+            error = "无法识别命令行参数。ZZZae 只支持可选参数 --game";
             return false;
         }
 
         if (args.Length == 1 || string.IsNullOrWhiteSpace(args[1]))
         {
-            error = "--game 后必须提供游戏目录或 ZenlessZoneZero.exe 路径。";
+            error = "--game 后必须提供游戏目录或 ZenlessZoneZero.exe 路径";
             return false;
         }
 
         if (args.Length != 2)
         {
-            error = "--game 只能指定一个游戏目录或 ZenlessZoneZero.exe 路径。";
+            error = "--game 只能指定一个游戏目录或 ZenlessZoneZero.exe 路径";
             return false;
         }
 
@@ -139,7 +139,7 @@ internal static class ExporterApplication
 
     private static void WriteUsage()
     {
-        Console.Error.WriteLine(@"用法：ZZZae.exe [--game ""游戏目录或 ZenlessZoneZero.exe 路径""]");
+        ApplicationLog.WriteError(@"用法：ZZZae.exe [--game ""游戏目录或 ZenlessZoneZero.exe 路径""]");
     }
 
     private static void EnsureGameIsNotRunning()
@@ -149,8 +149,13 @@ internal static class ExporterApplication
         {
             if (processes.Length != 0)
             {
-                throw new InvalidOperationException("检测到绝区零已经在运行。请先退出游戏，再运行 ZZZae。");
+                ApplicationLog.WriteDebug(
+                    $"游戏进程占用检查：发现 {processes.Length} 个进程，PID {string.Join(", ", processes.Select(static process => process.Id))}"
+                );
+                throw new InvalidOperationException("检测到绝区零已经在运行，请先退出游戏，再运行 ZZZae");
             }
+
+            ApplicationLog.WriteDebug("游戏进程占用检查：未发现正在运行的 ZenlessZoneZero");
         }
         finally
         {

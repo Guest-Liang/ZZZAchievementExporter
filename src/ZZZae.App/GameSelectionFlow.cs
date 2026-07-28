@@ -10,7 +10,7 @@ internal static class GameSelectionFlow
     {
         if (configuredGamePath is not null)
         {
-            Console.WriteLine("游戏路径来源：命令行 --game");
+            ApplicationLog.WriteInfo("游戏路径来源：命令行 --game");
             return ResolveAndValidateGame(configuredGamePath);
         }
 
@@ -19,7 +19,7 @@ internal static class GameSelectionFlow
         {
             if (registryGamePath is not null)
             {
-                Console.WriteLine("游戏路径来源：注册表（非交互启动）");
+                ApplicationLog.WriteInfo("游戏路径来源：注册表（非交互启动）");
                 return CreateGameSelection(registryGamePath);
             }
 
@@ -29,7 +29,7 @@ internal static class GameSelectionFlow
         var selectedOption = registryGamePath is null ? 1 : 0;
         while (true)
         {
-            Console.WriteLine("请选择游戏路径获取方式（↑/↓ 选择，Enter 确认）：");
+            ApplicationLog.WriteInfo("请选择游戏路径获取方式（↑/↓ 选择，Enter 确认）：");
             var isAdministrator = ElevationManager.IsAdministrator();
             var options = new[]
             {
@@ -46,7 +46,7 @@ internal static class GameSelectionFlow
                 escapeSelection: options.Length - 1
             );
             selectedOption = selected;
-            Console.WriteLine($"已选择：{options[selected]}");
+            ApplicationLog.WriteInfo($"已选择：{options[selected]}");
 
             if (selected == 0)
             {
@@ -56,13 +56,13 @@ internal static class GameSelectionFlow
                     try
                     {
                         var selection = CreateGameSelection(registryGamePath);
-                        Console.WriteLine("游戏路径来源：注册表");
+                        ApplicationLog.WriteInfo("游戏路径来源：注册表");
                         return selection;
                     }
                     catch (Exception exception) when (IsGamePathValidationException(exception))
                     {
-                        ApplicationLog.WriteException("注册表中的游戏路径未通过校验。", exception);
-                        Console.Error.WriteLine($"注册表中的游戏路径无效：{exception.Message}");
+                        ApplicationLog.WriteWarning($"注册表中的游戏路径无效：{exception.Message}");
+                        ApplicationLog.WriteDebug($"注册表中的游戏路径校验异常：{exception}", writeToConsole: false);
                         registryGamePath = null;
                         selectedOption = 1;
                         if (!WaitForReturnToPathMenu())
@@ -74,7 +74,7 @@ internal static class GameSelectionFlow
                     }
                 }
 
-                Console.Error.WriteLine("未检测到有效的游戏注册表路径，请重新选择。");
+                ApplicationLog.WriteWarning("未检测到有效的游戏注册表路径，请重新选择");
                 selectedOption = 1;
                 if (!WaitForReturnToPathMenu())
                 {
@@ -88,13 +88,13 @@ internal static class GameSelectionFlow
             {
                 if (isAdministrator)
                 {
-                    Console.WriteLine(
-                        "当前窗口具有管理员权限，Windows 会阻止从普通权限资源管理器拖入；请复制并粘贴完整路径。"
+                    ApplicationLog.WriteInfo(
+                        "当前窗口具有管理员权限，Windows 会阻止从普通权限资源管理器拖入；请复制并粘贴完整路径"
                     );
                 }
                 else
                 {
-                    Console.WriteLine("可以把游戏目录或 ZenlessZoneZero.exe 拖入当前窗口，也可以粘贴完整路径。");
+                    ApplicationLog.WriteInfo("可以把游戏目录或 ZenlessZoneZero.exe 拖入当前窗口，也可以粘贴完整路径");
                 }
 
                 Console.Write("游戏路径（直接按 Enter 取消）：");
@@ -107,13 +107,13 @@ internal static class GameSelectionFlow
                 try
                 {
                     var selection = ResolveAndValidateGame(enteredPath);
-                    Console.WriteLine("游戏路径来源：交互输入");
+                    ApplicationLog.WriteInfo("游戏路径来源：交互输入");
                     return selection;
                 }
                 catch (Exception exception) when (IsGamePathValidationException(exception))
                 {
-                    ApplicationLog.WriteException("手动指定的游戏路径未通过校验。", exception);
-                    Console.Error.WriteLine($"手动指定的游戏路径无效：{exception.Message}");
+                    ApplicationLog.WriteWarning($"手动指定的游戏路径无效：{exception.Message}");
+                    ApplicationLog.WriteDebug($"手动指定的游戏路径校验异常：{exception}", writeToConsole: false);
                     selectedOption = 1;
                     if (!WaitForReturnToPathMenu())
                     {
@@ -130,6 +130,7 @@ internal static class GameSelectionFlow
 
     private static GameSelection ResolveAndValidateGame(string configuredPath)
     {
+        ApplicationLog.WriteInfo($"待校验的游戏路径：{configuredPath}", writeToConsole: false);
         var executablePath = GameLocator.ResolveChinaGameExecutable(configuredPath);
         return CreateGameSelection(executablePath);
     }
@@ -146,7 +147,7 @@ internal static class GameSelectionFlow
 
     private static bool WaitForReturnToPathMenu()
     {
-        Console.Write("按 Enter 返回路径选择菜单……");
+        Console.Write("按 Enter 返回路径选择菜单...");
         var canContinue = Console.ReadLine() is not null;
         Console.WriteLine();
         return canContinue;
@@ -156,8 +157,8 @@ internal static class GameSelectionFlow
     {
         return new FileNotFoundException(
             """
-            没有在注册表找到游戏路径。
-            非交互启动时请使用 --game 指定游戏目录或 ZenlessZoneZero.exe 完整路径。
+            没有在注册表找到游戏路径；
+            非交互启动时请使用 --game 指定游戏目录或 ZenlessZoneZero.exe 完整路径
             """
         );
     }
@@ -165,24 +166,41 @@ internal static class GameSelectionFlow
     private static string ValidateChinaProductionBuild(string gameExecutablePath)
     {
         var gameDirectory =
-            Path.GetDirectoryName(gameExecutablePath) ?? throw new InvalidDataException("无法确定游戏安装目录。");
+            Path.GetDirectoryName(gameExecutablePath) ?? throw new InvalidDataException("无法确定游戏安装目录");
         var versionPath = Path.Combine(gameDirectory, "version_info");
+        ApplicationLog.WriteDebug($"正在校验游戏渠道文件：{versionPath}", writeToConsole: false);
         if (!File.Exists(versionPath))
         {
-            throw new FileNotFoundException("游戏目录缺少 version_info，无法确认渠道。", versionPath);
+            throw new FileNotFoundException("游戏目录缺少 version_info，无法确认渠道", versionPath);
         }
 
         var buildMarker = File.ReadAllText(versionPath).Trim();
+        ApplicationLog.WriteInfo($"游戏渠道标记：{buildMarker}", writeToConsole: false);
         if (!buildMarker.StartsWith(CNProductionMarker, StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"当前构建标记为 {buildMarker}，不是 ZZZae 支持的渠道。");
+            throw new InvalidDataException($"当前构建标记为 {buildMarker}，不是 ZZZae 支持的渠道");
         }
 
         var gameAssemblyPath = Path.Combine(gameDirectory, "GameAssembly.dll");
         if (!File.Exists(gameAssemblyPath))
         {
-            throw new FileNotFoundException("游戏目录缺少 GameAssembly.dll。", gameAssemblyPath);
+            throw new FileNotFoundException("游戏目录缺少 GameAssembly.dll", gameAssemblyPath);
         }
+
+        var executableInfo = new FileInfo(gameExecutablePath);
+        var gameAssemblyInfo = new FileInfo(gameAssemblyPath);
+        ApplicationLog.WriteDebug(
+            $"游戏文件：{executableInfo.FullName}；"
+                + $"大小 {executableInfo.Length} bytes；"
+                + $"最后写入 UTC {executableInfo.LastWriteTimeUtc:O}",
+            writeToConsole: false
+        );
+        ApplicationLog.WriteDebug(
+            $"GameAssembly：{gameAssemblyInfo.FullName}；"
+                + $"大小 {gameAssemblyInfo.Length} bytes；"
+                + $"最后写入 UTC {gameAssemblyInfo.LastWriteTimeUtc:O}",
+            writeToConsole: false
+        );
 
         return buildMarker;
     }

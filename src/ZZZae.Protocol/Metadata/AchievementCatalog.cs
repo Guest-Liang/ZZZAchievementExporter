@@ -23,7 +23,7 @@ public sealed record AchievementCatalog
 
         if (document.RootElement.ValueKind != JsonValueKind.Object)
         {
-            throw new InvalidDataException("内嵌 AchievementInfo.json 的根节点不是对象。");
+            throw new InvalidDataException("内嵌 AchievementInfo.json 的根节点不是对象");
         }
 
         var ids = new HashSet<uint>();
@@ -63,7 +63,7 @@ public sealed record AchievementCatalog
 
         if (ids.Count == 0)
         {
-            throw new InvalidDataException("内嵌 AchievementInfo.json 中没有成就 ID。");
+            throw new InvalidDataException("内嵌 AchievementInfo.json 中没有成就 ID");
         }
 
         return new AchievementCatalog { Ids = ids, LatestVersion = latestVersionText };

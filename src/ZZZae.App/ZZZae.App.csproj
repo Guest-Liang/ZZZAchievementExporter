@@ -4,6 +4,12 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>ZZZae</AssemblyName>
     <RootNamespace>ZZZae.App</RootNamespace>
+    <AssemblyTitle>ZZZae 绝区零成就导出工具</AssemblyTitle>
+    <Product>ZZZae</Product>
+    <Company>GuestLiang</Company>
+    <Copyright>Copyright © 2026 GuestLiang</Copyright>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <TargetExt Condition="'$(UseExecutableManagedTargetForNativeAot)' == 'true'">.exe</TargetExt>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>

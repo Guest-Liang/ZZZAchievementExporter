@@ -29,12 +29,7 @@ internal static class AchievementExportWriter
             case ExportTarget.AchievementBackup:
                 fileName = $"ZZZae-achievements-{stamp}.json";
                 displayName = "成就数据备份";
-                content = AchievementBackupExporter.Serialize(
-                    snapshot,
-                    uid,
-                    catalog.LatestVersion,
-                    catalog.Count
-                );
+                content = AchievementBackupExporter.Serialize(snapshot, uid, catalog.LatestVersion, catalog.Count);
                 break;
 
             case ExportTarget.Liyin:
@@ -50,7 +45,7 @@ internal static class AchievementExportWriter
                 break;
 
             default:
-                throw new ArgumentOutOfRangeException(nameof(target), target, "未知导出目标。");
+                throw new ArgumentOutOfRangeException(nameof(target), target, "未知导出目标");
         }
 
         var outputPath = UniquePath(directory, fileName);
@@ -77,7 +72,7 @@ internal static class AchievementExportWriter
             }
         }
 
-        throw new IOException("无法为导出结果选择未占用的文件名。");
+        throw new IOException("无法为导出结果选择未占用的文件名");
     }
 }
 

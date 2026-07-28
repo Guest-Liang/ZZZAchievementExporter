@@ -59,13 +59,13 @@ internal static unsafe class ParserLocator
 
         if (*(ushort*)image != 0x5A4D)
         {
-            throw new InvalidDataException("GameAssembly.dll 不含有效的 DOS 头。");
+            throw new InvalidDataException("GameAssembly.dll 不含有效的 DOS 头");
         }
 
         var ntOffset = *(int*)(image + 0x3C);
         if (ntOffset <= 0 || *(uint*)(image + ntOffset) != 0x0000_4550)
         {
-            throw new InvalidDataException("GameAssembly.dll 不含有效的 PE 头。");
+            throw new InvalidDataException("GameAssembly.dll 不含有效的 PE 头");
         }
 
         var fileHeader = image + ntOffset + sizeof(uint);
@@ -75,14 +75,14 @@ internal static unsafe class ParserLocator
 
         if (*(ushort*)optionalHeader != 0x020B)
         {
-            throw new InvalidDataException("GameAssembly.dll 不是 PE32+ 映像。");
+            throw new InvalidDataException("GameAssembly.dll 不是 PE32+ 映像");
         }
 
         var imageSize = *(uint*)(optionalHeader + 56);
         var directoryCount = *(uint*)(optionalHeader + 108);
         if (directoryCount <= 3)
         {
-            throw new InvalidDataException("GameAssembly.dll 没有异常目录，无法还原函数边界。");
+            throw new InvalidDataException("GameAssembly.dll 没有异常目录，无法还原函数边界");
         }
 
         var exceptionDirectory = optionalHeader + 112 + (3 * 8);
@@ -90,7 +90,7 @@ internal static unsafe class ParserLocator
         var exceptionSize = *(uint*)(exceptionDirectory + 4);
         if (exceptionRva == 0 || exceptionSize < 12 || exceptionRva >= imageSize)
         {
-            throw new InvalidDataException("GameAssembly.dll 的异常目录为空，无法还原函数边界。");
+            throw new InvalidDataException("GameAssembly.dll 的异常目录为空，无法还原函数边界");
         }
 
         var functionTable = image + exceptionRva;
@@ -115,8 +115,7 @@ internal static unsafe class ParserLocator
         if (headHits.Count == 0 || tailHits.Count == 0)
         {
             throw new InvalidDataException(
-                $"可执行节中找不到成对的包头/包尾魔数（包头 {headHits.Count} 处，包尾 {tailHits.Count} 处）。"
-                    + "网络协议可能已经改变。"
+                $"可执行节中找不到成对的包头/包尾魔数（包头 {headHits.Count} 处，包尾 {tailHits.Count} 处），网络协议可能已经改变"
             );
         }
 
@@ -135,7 +134,7 @@ internal static unsafe class ParserLocator
 
         if (matched.Count == 0)
         {
-            throw new InvalidDataException("没有任何函数同时引用包头和包尾魔数，无法确定明文包解析器。");
+            throw new InvalidDataException("没有任何函数同时引用包头和包尾魔数，无法确定明文包解析器");
         }
 
         var target = SelectParser(matched);
@@ -182,8 +181,7 @@ internal static unsafe class ParserLocator
         }
 
         throw new InvalidDataException(
-            $"有 {matched.Count} 个函数同时引用包头和包尾魔数，无法区分明文包解析器：{described}。"
-                + "需要重新分析当前游戏版本。"
+            $"有 {matched.Count} 个函数同时引用包头和包尾魔数，无法区分明文包解析器：{described}，需要重新分析当前游戏版本"
         );
     }
 
@@ -210,7 +208,7 @@ internal static unsafe class ParserLocator
                 )
             )
             {
-                // 落在任何函数之外的命中只是恰好相同的数据，忽略。
+                // 落在任何函数之外的命中只是恰好相同的数据，忽略
                 continue;
             }
 
@@ -303,7 +301,7 @@ internal static unsafe class ParserLocator
             hits.Add(baseRva + (uint)offset);
             if (hits.Count > MaxMagicHits)
             {
-                throw new InvalidDataException("魔数在可执行节中出现次数异常，拒绝继续定位解析器。");
+                throw new InvalidDataException("魔数在可执行节中出现次数异常，拒绝继续定位解析器");
             }
 
             offset++;
@@ -453,12 +451,12 @@ internal static unsafe class ParserLocator
         var version = (byte)(info[0] & 0x07);
         if (version != 1)
         {
-            throw new InvalidDataException($"解析器的 UNWIND_INFO 版本为 {version}，当前只支持版本 1。");
+            throw new InvalidDataException($"解析器的 UNWIND_INFO 版本为 {version}，当前只支持版本 1");
         }
 
         if ((info[3] & 0x0F) != 0)
         {
-            throw new InvalidDataException("解析器使用帧指针序言，无法确认入口字节可以安全搬迁。");
+            throw new InvalidDataException("解析器使用帧指针序言，无法确认入口字节可以安全搬迁");
         }
 
         var codeCount = info[2];
@@ -474,7 +472,7 @@ internal static unsafe class ParserLocator
             var slots = SlotsFor(operation, operationInfo);
             if (slots == 0)
             {
-                throw new InvalidDataException($"解析器的 UNWIND_INFO 含有无法识别的操作 {operation}。");
+                throw new InvalidDataException($"解析器的 UNWIND_INFO 含有无法识别的操作 {operation}");
             }
 
             operationSlots[operationCount++] = slot;
@@ -509,11 +507,11 @@ internal static unsafe class ParserLocator
             {
                 return consumed <= MaxPatchSize
                     ? consumed
-                    : throw new InvalidDataException($"解析器序言的可搬迁长度为 {consumed} 字节，超出上限。");
+                    : throw new InvalidDataException($"解析器序言的可搬迁长度为 {consumed} 字节，超出上限");
             }
         }
 
-        throw new InvalidDataException($"解析器入口只有 {consumed} 字节可以安全搬迁，放不下 {JumpSize} 字节绝对跳转。");
+        throw new InvalidDataException($"解析器入口只有 {consumed} 字节可以安全搬迁，放不下 {JumpSize} 字节绝对跳转");
     }
 
     private static int SlotsFor(byte operation, byte operationInfo) =>

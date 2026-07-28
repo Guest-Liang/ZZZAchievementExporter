@@ -256,14 +256,14 @@ public sealed class AchievementSnapshotDecoder
             || !path.EndsWith("[]", StringComparison.Ordinal)
         )
         {
-            throw new ArgumentException("成就记录路径必须采用 $.字段.字段[] 格式。", nameof(path));
+            throw new ArgumentException("成就记录路径必须采用 $.字段.字段[] 格式", nameof(path));
         }
 
         var segments = path[2..^2].Split('.', StringSplitOptions.RemoveEmptyEntries);
         var result = new uint[segments.Length];
         if (result.Length == 0)
         {
-            throw new ArgumentException("成就记录路径不能为空。", nameof(path));
+            throw new ArgumentException("成就记录路径不能为空", nameof(path));
         }
 
         for (var index = 0; index < segments.Length; index++)
@@ -273,7 +273,7 @@ public sealed class AchievementSnapshotDecoder
                 || result[index] == 0
             )
             {
-                throw new ArgumentException($"成就记录路径包含无效字段：{segments[index]}。", nameof(path));
+                throw new ArgumentException($"成就记录路径包含无效字段：{segments[index]}", nameof(path));
             }
         }
 

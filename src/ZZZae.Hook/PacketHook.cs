@@ -35,7 +35,7 @@ internal static unsafe class PacketHook
         {
             if (DateTime.UtcNow >= deadline)
             {
-                throw new TimeoutException("等待 GameAssembly.dll 加载超时。");
+                throw new TimeoutException("等待 GameAssembly.dll 加载超时");
             }
 
             Thread.Sleep(25);
@@ -173,7 +173,7 @@ internal static unsafe class PacketHook
             );
             if (_trampoline == 0)
             {
-                throw new InvalidOperationException("VirtualAlloc 无法创建 Hook trampoline。");
+                throw new InvalidOperationException("VirtualAlloc 无法创建 Hook trampoline");
             }
 
             fixed (byte* destination = OriginalBytes)
@@ -196,7 +196,7 @@ internal static unsafe class PacketHook
                 )
             )
             {
-                throw new InvalidOperationException("VirtualProtect 无法修改目标函数。");
+                throw new InvalidOperationException("VirtualProtect 无法修改目标函数");
             }
 
             try
@@ -215,7 +215,7 @@ internal static unsafe class PacketHook
 
             if (!NativeMethods.FlushInstructionCache(NativeMethods.GetCurrentProcess(), target, patchSize))
             {
-                throw new InvalidOperationException("FlushInstructionCache 失败。");
+                throw new InvalidOperationException("FlushInstructionCache 失败");
             }
         }
         catch

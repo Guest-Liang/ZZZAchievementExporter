@@ -35,8 +35,7 @@ internal static unsafe class CurrentUidLocator
     private const int RipRelativeInstructionLength = 7;
     private const int MaximumCandidates = 64;
 
-    private static ReadOnlySpan<byte> Marker =>
-        [0x48, 0x8B, 0x30, 0xF6, 0x86, 0xCC, 0x00, 0x00, 0x00, 0x01];
+    private static ReadOnlySpan<byte> Marker => [0x48, 0x8B, 0x30, 0xF6, 0x86, 0xCC, 0x00, 0x00, 0x00, 0x01];
 
     private readonly record struct Candidate(uint CodeRva, uint RootSlotRva, uint ServiceTypeSlotRva);
 
@@ -45,13 +44,13 @@ internal static unsafe class CurrentUidLocator
         var image = (byte*)moduleBase;
         if (*(ushort*)image != 0x5A4D)
         {
-            throw new InvalidDataException("GameAssembly.dll 不含有效的 DOS 头，无法定位当前 UID。");
+            throw new InvalidDataException("GameAssembly.dll 不含有效的 DOS 头，无法定位当前 UID");
         }
 
         var ntOffset = *(int*)(image + 0x3C);
         if (ntOffset <= 0 || *(uint*)(image + ntOffset) != 0x0000_4550)
         {
-            throw new InvalidDataException("GameAssembly.dll 不含有效的 PE 头，无法定位当前 UID。");
+            throw new InvalidDataException("GameAssembly.dll 不含有效的 PE 头，无法定位当前 UID");
         }
 
         var fileHeader = image + ntOffset + sizeof(uint);
@@ -60,26 +59,18 @@ internal static unsafe class CurrentUidLocator
         var optionalHeader = fileHeader + 20;
         if (*(ushort*)optionalHeader != 0x020B)
         {
-            throw new InvalidDataException("GameAssembly.dll 不是 PE32+ 映像，无法定位当前 UID。");
+            throw new InvalidDataException("GameAssembly.dll 不是 PE32+ 映像，无法定位当前 UID");
         }
 
         var imageSize = *(uint*)(optionalHeader + 56);
         var sectionTable = optionalHeader + optionalHeaderSize;
         var candidates = new List<Candidate>();
 
-        ScanExecutableSections(
-            image,
-            sectionTable,
-            sectionCount,
-            imageSize,
-            candidates
-        );
+        ScanExecutableSections(image, sectionTable, sectionCount, imageSize, candidates);
 
         if (candidates.Count == 0)
         {
-            throw new InvalidDataException(
-                "找不到符合当前玩家 UID getter 对象布局的代码路径；游戏结构可能已经改变。"
-            );
+            throw new InvalidDataException("找不到符合当前玩家 UID getter 对象布局的代码路径；游戏结构可能已经改变");
         }
 
         var selected = candidates[0];
@@ -126,19 +117,8 @@ internal static unsafe class CurrentUidLocator
             }
 
             var safeSize = Math.Min(virtualSize, imageSize - virtualAddress);
-            var span = new ReadOnlySpan<byte>(
-                image + virtualAddress,
-                checked((int)safeSize)
-            );
-            ScanSection(
-                span,
-                virtualAddress,
-                imageSize,
-                image,
-                sectionTable,
-                sectionCount,
-                candidates
-            );
+            var span = new ReadOnlySpan<byte>(image + virtualAddress, checked((int)safeSize));
+            ScanSection(span, virtualAddress, imageSize, image, sectionTable, sectionCount, candidates);
         }
     }
 
@@ -187,28 +167,14 @@ internal static unsafe class CurrentUidLocator
                         imageSize,
                         out var serviceTypeSlotRva
                     )
-                    && IsWritableDataSlot(
-                        image,
-                        sectionTable,
-                        sectionCount,
-                        imageSize,
-                        rootSlotRva
-                    )
-                    && IsWritableDataSlot(
-                        image,
-                        sectionTable,
-                        sectionCount,
-                        imageSize,
-                        serviceTypeSlotRva
-                    )
+                    && IsWritableDataSlot(image, sectionTable, sectionCount, imageSize, rootSlotRva)
+                    && IsWritableDataSlot(image, sectionTable, sectionCount, imageSize, serviceTypeSlotRva)
                 )
                 {
                     candidates.Add(new Candidate(codeRva, rootSlotRva, serviceTypeSlotRva));
                     if (candidates.Count > MaximumCandidates)
                     {
-                        throw new InvalidDataException(
-                            "当前玩家 UID getter 的结构命中数量异常，拒绝继续定位。"
-                        );
+                        throw new InvalidDataException("当前玩家 UID getter 的结构命中数量异常，拒绝继续定位");
                     }
                 }
             }
@@ -220,51 +186,27 @@ internal static unsafe class CurrentUidLocator
     private static bool IsUidGetterPath(ReadOnlySpan<byte> code, int start)
     {
         // RIP 相对地址、call/jump 位移会随重编译变化，故只核对操作码、寄存器流、
-        // IL2CPP 初始化标志偏移以及真正有语义的对象字段偏移。
+        // IL2CPP 初始化标志偏移以及真正有语义的对象字段偏移
         return Matches(code, start + 0x00, [0x48, 0x8B, 0x05])
-            && Matches(
-                code,
-                start + 0x07,
-                [0x48, 0x8B, 0x30, 0xF6, 0x86, 0xCC, 0x00, 0x00, 0x00, 0x01, 0x0F, 0x84]
-            )
+            && Matches(code, start + 0x07, [0x48, 0x8B, 0x30, 0xF6, 0x86, 0xCC, 0x00, 0x00, 0x00, 0x01, 0x0F, 0x84])
             && Matches(
                 code,
                 start + 0x17,
                 [0x48, 0x8B, 0x46, 0x40, 0x48, 0x8B, 0x78, 0x10, 0x48, 0x85, 0xFF, 0x0F, 0x84]
             )
-            && Matches(
-                code,
-                start + 0x28,
-                [0xF6, 0x87, 0xCC, 0x00, 0x00, 0x00, 0x01, 0x0F, 0x84]
-            )
-            && Matches(
-                code,
-                start + 0x35,
-                [0x48, 0x8B, 0x47, 0x50, 0x48, 0x8B, 0x30, 0x48, 0x85, 0xF6, 0x0F, 0x84]
-            )
+            && Matches(code, start + 0x28, [0xF6, 0x87, 0xCC, 0x00, 0x00, 0x00, 0x01, 0x0F, 0x84])
+            && Matches(code, start + 0x35, [0x48, 0x8B, 0x47, 0x50, 0x48, 0x8B, 0x30, 0x48, 0x85, 0xF6, 0x0F, 0x84])
             && Matches(code, start + 0x45, [0x80, 0x3D])
             && code[start + 0x4B] == 0
             && Matches(code, start + 0x4C, [0x0F, 0x84])
             && Matches(code, start + 0x52, [0x80, 0x3D])
             && code[start + 0x58] == 0
             && Matches(code, start + 0x59, [0x0F, 0x85])
-            && Matches(
-                code,
-                start + 0x5F,
-                [0x48, 0x8B, 0x46, 0x40, 0x48, 0x85, 0xC0, 0x75]
-            )
+            && Matches(code, start + 0x5F, [0x48, 0x8B, 0x46, 0x40, 0x48, 0x85, 0xC0, 0x75])
             && Matches(code, start + 0x68, [0x48, 0x8B, 0x15])
             && Matches(code, start + 0x6F, [0x48, 0x89, 0xF1, 0xE8])
-            && Matches(
-                code,
-                start + 0x77,
-                [0x48, 0x89, 0x46, 0x40, 0x48, 0x85, 0xC0, 0x0F, 0x84]
-            )
-            && Matches(
-                code,
-                start + 0x84,
-                [0x8B, 0x40, 0x40, 0x48, 0x83, 0xC4, 0x28, 0x5F, 0x5E, 0xC3]
-            );
+            && Matches(code, start + 0x77, [0x48, 0x89, 0x46, 0x40, 0x48, 0x85, 0xC0, 0x0F, 0x84])
+            && Matches(code, start + 0x84, [0x8B, 0x40, 0x40, 0x48, 0x83, 0xC4, 0x28, 0x5F, 0x5E, 0xC3]);
     }
 
     private static bool Matches(ReadOnlySpan<byte> code, int offset, ReadOnlySpan<byte> expected)
@@ -284,14 +226,8 @@ internal static unsafe class CurrentUidLocator
     )
     {
         var displacementOffset = candidateOffset + instructionOffset + 3;
-        var displacement = BinaryPrimitives.ReadInt32LittleEndian(
-            section.Slice(displacementOffset, sizeof(int))
-        );
-        var target =
-            (long)candidateRva
-            + instructionOffset
-            + RipRelativeInstructionLength
-            + displacement;
+        var displacement = BinaryPrimitives.ReadInt32LittleEndian(section.Slice(displacementOffset, sizeof(int)));
+        var target = (long)candidateRva + instructionOffset + RipRelativeInstructionLength + displacement;
         if (target < 0 || target > imageSize - sizeof(nint))
         {
             targetRva = 0;
@@ -302,13 +238,7 @@ internal static unsafe class CurrentUidLocator
         return true;
     }
 
-    private static bool IsWritableDataSlot(
-        byte* image,
-        byte* sectionTable,
-        int sectionCount,
-        uint imageSize,
-        uint rva
-    )
+    private static bool IsWritableDataSlot(byte* image, byte* sectionTable, int sectionCount, uint imageSize, uint rva)
     {
         _ = image;
 
@@ -330,10 +260,7 @@ internal static unsafe class CurrentUidLocator
 
             var safeSize = Math.Min(virtualSize, imageSize - virtualAddress);
             var sectionEnd = (ulong)virtualAddress + safeSize;
-            if (
-                rva >= virtualAddress
-                && (ulong)rva + (uint)sizeof(nint) <= sectionEnd
-            )
+            if (rva >= virtualAddress && (ulong)rva + (uint)sizeof(nint) <= sectionEnd)
             {
                 return true;
             }
@@ -359,6 +286,6 @@ internal static unsafe class CurrentUidLocator
             );
         }
 
-        return $"找到多个不同的当前玩家 UID getter 目标，无法安全选择：{description}。";
+        return $"找到多个不同的当前玩家 UID getter 目标，无法安全选择：{description}";
     }
 }

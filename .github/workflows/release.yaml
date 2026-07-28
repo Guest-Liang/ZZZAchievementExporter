@@ -43,7 +43,7 @@ jobs:
           dotnet --info
           gh --version
 
-      - name: Resolve release version
+      - name: Resolve and verify release version
         id: version
         shell: pwsh
         env:
@@ -56,16 +56,33 @@ jobs:
             throw "Release version must start with v and contain only letters, numbers, dots, underscores, or hyphens."
           }
 
-          "Release version: $version"
+          $versionSourcePath = Join-Path `
+            $env:GITHUB_WORKSPACE `
+            'src\ZZZae.App\ApplicationBuildInfo.cs'
+          $versionSource = Get-Content -LiteralPath $versionSourcePath -Raw
+          $versionMatches = [regex]::Matches(
+            $versionSource,
+            'public\s+const\s+string\s+Version\s*=\s*"([^"]+)"\s*;'
+          )
+          if ($versionMatches.Count -ne 1) {
+            throw "Expected exactly one ApplicationBuildInfo.Version constant in $versionSourcePath."
+          }
+
+          $applicationVersion = $versionMatches[0].Groups[1].Value
+          $tagVersion = $version.Substring(1)
+          if (-not [string]::Equals(
+            $applicationVersion,
+            $tagVersion,
+            [StringComparison]::Ordinal))
+          {
+            throw "Source version '$applicationVersion' does not match release tag '$version'."
+          }
+
+          "Release version: $version (source version $applicationVersion)"
           "version=$version" >> $env:GITHUB_OUTPUT
+          "application_version=$applicationVersion" >> $env:GITHUB_OUTPUT
 
-      - name: Publish NativeAOT executable
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & .\publish.ps1 -Configuration Release
-
-      - name: Verify and prepare asset
+      - name: Build Release and Debug NativeAOT executables
         id: assets
         shell: pwsh
         env:
@@ -73,29 +90,41 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $publishDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
-          $files = @(Get-ChildItem -LiteralPath $publishDirectory -File)
-          if ($files.Count -ne 1 -or $files[0].Name -ne 'ZZZae.exe') {
-            $names = $files.Name -join ', '
-            throw "Expected exactly one published file named ZZZae.exe, found: $names"
+          & .\build.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "NativeAOT build failed with exit code $LASTEXITCODE."
           }
 
-          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts\release'
-          New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
+          $buildDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts\build'
+          $releaseExe = Join-Path $buildDirectory "ZZZae_$($env:RELEASE_VERSION)_Release.exe"
+          $debugExe = Join-Path $buildDirectory "ZZZae_$($env:RELEASE_VERSION)_Debug.exe"
+          $builtFiles = @(Get-ChildItem -LiteralPath $buildDirectory -File)
+          $unexpectedFiles = @(
+            $builtFiles | Where-Object {
+              $_.FullName -notin @($releaseExe, $debugExe)
+            }
+          )
+          if (
+            $builtFiles.Count -ne 2 -or
+            $unexpectedFiles.Count -ne 0 -or
+            -not (Test-Path -LiteralPath $releaseExe -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $debugExe -PathType Leaf)
+          ) {
+            $names = $builtFiles.Name -join ', '
+            throw "Expected exactly the Release and Debug executables, found: $names"
+          }
 
-          $versionedFileName = "ZZZae_$($env:RELEASE_VERSION).exe"
-          $exe = Join-Path $releaseDirectory $versionedFileName
-          Copy-Item -LiteralPath $files[0].FullName -Destination $exe
-
-          "Published file: $exe"
-          "exe_path=$exe" >> $env:GITHUB_OUTPUT
+          "release_exe_path=$releaseExe" >> $env:GITHUB_OUTPUT
+          "debug_exe_path=$debugExe" >> $env:GITHUB_OUTPUT
           "artifact_name=ZZZae-$($env:RELEASE_VERSION)-win-x64" >> $env:GITHUB_OUTPUT
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.assets.outputs.artifact_name }}
-          path: ${{ steps.assets.outputs.exe_path }}
+          path: |
+            ${{ steps.assets.outputs.release_exe_path }}
+            ${{ steps.assets.outputs.debug_exe_path }}
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -103,7 +132,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          EXE_PATH: ${{ steps.assets.outputs.exe_path }}
+          RELEASE_EXE_PATH: ${{ steps.assets.outputs.release_exe_path }}
+          DEBUG_EXE_PATH: ${{ steps.assets.outputs.debug_exe_path }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -131,7 +161,8 @@ jobs:
 
             gh release upload `
               $version `
-              $env:EXE_PATH `
+              $env:RELEASE_EXE_PATH `
+              $env:DEBUG_EXE_PATH `
               --repo $env:GITHUB_REPOSITORY `
               --clobber
             if ($LASTEXITCODE -ne 0) {
@@ -143,7 +174,8 @@ jobs:
           $arguments = @(
             'release', 'create',
             $version,
-            $env:EXE_PATH,
+            $env:RELEASE_EXE_PATH,
+            $env:DEBUG_EXE_PATH,
             '--repo', $env:GITHUB_REPOSITORY,
             '--title', $version,
             '--generate-notes'

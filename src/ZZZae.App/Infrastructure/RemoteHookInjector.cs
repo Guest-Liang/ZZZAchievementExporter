@@ -15,6 +15,10 @@ internal static unsafe class RemoteHookInjector
         ArgumentException.ThrowIfNullOrWhiteSpace(hookPath);
 
         var fullHookPath = Path.GetFullPath(hookPath);
+        ApplicationLog.WriteInfo(
+            $"正在向游戏进程加载 Hook：PID {game.ProcessId}；文件 {fullHookPath}",
+            writeToConsole: false
+        );
         var localKernel32 = NativeMethods.GetModuleHandle(Kernel32Name);
         if (localKernel32 == 0)
         {
@@ -43,17 +47,30 @@ internal static unsafe class RemoteHookInjector
         var remoteProcedureModule = FindRemoteModuleBase(game.ProcessId, procedureModuleName, TimeSpan.FromSeconds(10));
         var loadLibraryRva = checked(localLoadLibrary - localProcedureModule);
         var remoteLoadLibrary = checked(remoteProcedureModule + loadLibraryRva);
+        ApplicationLog.WriteDebug(
+            $"远程加载入口：模块 {procedureModuleName}；"
+                + $"本地基址 0x{localProcedureModule:X}；"
+                + $"远程基址 0x{remoteProcedureModule:X}；"
+                + $"LoadLibraryW RVA 0x{loadLibraryRva:X}",
+            writeToConsole: false
+        );
 
         LoadRemoteLibrary(game.ProcessHandle, remoteLoadLibrary, fullHookPath);
 
         var remoteHook = FindRemoteModuleBase(game.ProcessId, Path.GetFileName(fullHookPath), TimeSpan.FromSeconds(10));
         var startRva = GetExportRva(fullHookPath, StartExport);
         var startAddress = checked(remoteHook + startRva);
+        ApplicationLog.WriteDebug(
+            $"Hook 初始化入口：远程基址 0x{remoteHook:X}；{StartExport} RVA 0x{startRva:X}",
+            writeToConsole: false
+        );
         var exitCode = RunRemoteThread(game.ProcessHandle, startAddress, 0, TimeSpan.FromSeconds(30), StartExport);
         if (exitCode != 0)
         {
-            throw new InvalidOperationException($"Hook 初始化入口返回 {exitCode}。");
+            throw new InvalidOperationException($"Hook 初始化入口返回 {exitCode}");
         }
+
+        ApplicationLog.WriteInfo($"Hook 已加载并启动：PID {game.ProcessId}", writeToConsole: false);
     }
 
     private static nint GetExportRva(string modulePath, string exportName)
@@ -103,7 +120,7 @@ internal static unsafe class RemoteHookInjector
             var waitResult = NativeMethods.WaitForSingleObject(thread, milliseconds);
             if (waitResult == NativeMethods.WaitTimeout)
             {
-                throw new TimeoutException($"等待远程操作 {operation} 超时。");
+                throw new TimeoutException($"等待远程操作 {operation} 超时");
             }
 
             if (waitResult != NativeMethods.WaitObject0)
@@ -113,7 +130,7 @@ internal static unsafe class RemoteHookInjector
                     throw SuspendedGameProcess.NewWin32Exception($"等待远程操作 {operation} 失败");
                 }
 
-                throw new InvalidOperationException($"远程操作 {operation} 返回未知等待状态 0x{waitResult:X8}。");
+                throw new InvalidOperationException($"远程操作 {operation} 返回未知等待状态 0x{waitResult:X8}");
             }
 
             if (!NativeMethods.GetExitCodeThread(thread, out var exitCode))
@@ -123,7 +140,7 @@ internal static unsafe class RemoteHookInjector
 
             if (exitCode == NativeMethods.ThreadStillActive)
             {
-                throw new InvalidOperationException($"远程操作 {operation} 在等待结束后仍在运行。");
+                throw new InvalidOperationException($"远程操作 {operation} 在等待结束后仍在运行");
             }
 
             return exitCode;
@@ -177,7 +194,7 @@ internal static unsafe class RemoteHookInjector
             );
             if (exitCode == 0)
             {
-                throw new InvalidOperationException("游戏进程中的 LoadLibraryW 返回空模块句柄。");
+                throw new InvalidOperationException("游戏进程中的 LoadLibraryW 返回空模块句柄");
             }
         }
         finally
@@ -201,7 +218,7 @@ internal static unsafe class RemoteHookInjector
             Thread.Sleep(25);
         } while (DateTime.UtcNow < deadline);
 
-        throw new InvalidOperationException($"在游戏进程中找不到模块 {moduleName}。");
+        throw new InvalidOperationException($"在游戏进程中找不到模块 {moduleName}");
     }
 
     private static nint TryFindRemoteModuleBase(int processId, string moduleName)

@@ -39,10 +39,7 @@ internal sealed unsafe class CurrentUidReader
             || !TryReadPointer(firstLink + SecondClassOffset, out var secondClass)
             || secondClass == 0
             || !IsClassInitialized(secondClass)
-            || !TryReadPointer(
-                secondClass + StaticInstanceSlotOffset,
-                out var staticInstanceSlot
-            )
+            || !TryReadPointer(secondClass + StaticInstanceSlotOffset, out var staticInstanceSlot)
             || staticInstanceSlot == 0
             || !TryReadPointer(staticInstanceSlot, out var owner)
             || owner == 0
@@ -61,11 +58,7 @@ internal sealed unsafe class CurrentUidReader
 
     private bool IsClassInitialized(nint classAddress)
     {
-        return TryReadByte(
-                classAddress + ClassInitializedFlagOffset,
-                out var initialized
-            )
-            && (initialized & 1) != 0;
+        return TryReadByte(classAddress + ClassInitializedFlagOffset, out var initialized) && (initialized & 1) != 0;
     }
 
     private bool TryReadPointer(nint address, out nint value)
@@ -85,13 +78,7 @@ internal sealed unsafe class CurrentUidReader
     private bool TryReadUInt32(nint address, out uint value)
     {
         uint readValue = 0;
-        var succeeded = NativeMethods.ReadProcessMemory(
-            _process,
-            address,
-            &readValue,
-            sizeof(uint),
-            out var bytesRead
-        );
+        var succeeded = NativeMethods.ReadProcessMemory(_process, address, &readValue, sizeof(uint), out var bytesRead);
         value = readValue;
         return succeeded && bytesRead == sizeof(uint);
     }
@@ -99,13 +86,7 @@ internal sealed unsafe class CurrentUidReader
     private bool TryReadByte(nint address, out byte value)
     {
         byte readValue = 0;
-        var succeeded = NativeMethods.ReadProcessMemory(
-            _process,
-            address,
-            &readValue,
-            sizeof(byte),
-            out var bytesRead
-        );
+        var succeeded = NativeMethods.ReadProcessMemory(_process, address, &readValue, sizeof(byte), out var bytesRead);
         value = readValue;
         return succeeded && bytesRead == sizeof(byte);
     }

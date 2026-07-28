@@ -1,30 +1,31 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace ZZZae.App.Infrastructure;
 
+internal enum ApplicationLogLevel
+{
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
 internal sealed class ApplicationLog : IDisposable
 {
-    private const string FileName = "ZZZae.log";
-
     private static readonly object CurrentGate = new();
     private static ApplicationLog? _current;
 
-    private readonly TextWriter _originalOut;
-    private readonly TextWriter _originalError;
-    private readonly TeeTextWriter _teeOut;
-    private readonly TeeTextWriter _teeError;
     private readonly LogSink _sink;
     private bool _disposed;
 
-    private ApplicationLog(string filePath, TextWriter originalOut, TextWriter originalError, LogSink sink)
+    private ApplicationLog(string filePath, LogSink sink)
     {
         FilePath = filePath;
-        _originalOut = originalOut;
-        _originalError = originalError;
         _sink = sink;
-        _teeOut = new TeeTextWriter(originalOut, sink);
-        _teeError = new TeeTextWriter(originalError, sink);
     }
 
     public string FilePath { get; }
@@ -42,9 +43,9 @@ internal sealed class ApplicationLog : IDisposable
 
     public static ApplicationLog? TryStart()
     {
-        var originalOut = Console.Out;
-        var originalError = Console.Error;
-        var filePath = Path.Combine(AppContext.BaseDirectory, FileName);
+        var localDate = DateTimeOffset.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var fileName = $"ZZZae-{localDate}.log";
+        var filePath = Path.Combine(AppContext.BaseDirectory, fileName);
         FileStream? stream = null;
         LogSink? sink = null;
 
@@ -56,10 +57,7 @@ internal sealed class ApplicationLog : IDisposable
                 AutoFlush = true,
             };
             sink = new LogSink(writer);
-            var log = new ApplicationLog(filePath, originalOut, originalError, sink);
-
-            Console.SetOut(log._teeOut);
-            Console.SetError(log._teeError);
+            var log = new ApplicationLog(filePath, sink);
             log.WriteSessionHeader();
 
             lock (CurrentGate)
@@ -73,39 +71,42 @@ internal sealed class ApplicationLog : IDisposable
         }
         catch (Exception exception)
         {
-            try
-            {
-                Console.SetOut(originalOut);
-                Console.SetError(originalError);
-            }
-            catch (Exception)
-            {
-                // Preserve the original initialization error.
-            }
-
             sink?.Dispose();
             stream?.Dispose();
-            originalError.WriteLine($"警告：无法创建日志文件 {filePath}：{exception.Message}");
+            Console.Error.WriteLine($"警告：无法创建日志文件 {filePath}：{exception.Message}");
             return null;
         }
     }
 
-    public static void WriteDiagnostic(string message)
+    public static void WriteInfo(string message, bool writeToConsole = true)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        Write(ApplicationLogLevel.Info, message, writeToConsole, useErrorStream: false);
+    }
 
-        lock (CurrentGate)
-        {
-            _current?._sink.WriteLine($"[{NowInChina():yyyy-MM-dd HH:mm:ss.fff zzz}] {message}");
-        }
+    public static void WriteWarning(string message, bool writeToConsole = true)
+    {
+        Write(ApplicationLogLevel.Warning, message, writeToConsole, useErrorStream: true);
+    }
+
+    public static void WriteError(string message, bool writeToConsole = true)
+    {
+        Write(ApplicationLogLevel.Error, message, writeToConsole, useErrorStream: true);
+    }
+
+    [Conditional("DEBUG")]
+    public static void WriteDebug(string message, bool writeToConsole = false)
+    {
+        Write(ApplicationLogLevel.Debug, message, writeToConsole, useErrorStream: false);
     }
 
     public static void WriteException(string context, Exception exception)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(context);
-        ArgumentNullException.ThrowIfNull(exception);
+        WriteException(ApplicationLogLevel.Error, context, exception);
+    }
 
-        WriteDiagnostic($"{context}{Environment.NewLine}{exception}");
+    public static void WriteWarningException(string context, Exception exception)
+    {
+        WriteException(ApplicationLogLevel.Warning, context, exception);
     }
 
     public void Dispose()
@@ -116,17 +117,7 @@ internal sealed class ApplicationLog : IDisposable
         }
 
         _disposed = true;
-        _sink.WriteLine($"[{NowInChina():yyyy-MM-dd HH:mm:ss.fff zzz}] 日志会话结束。");
-        _sink.WriteLine(string.Empty);
-
-        if (ReferenceEquals(Console.Out, _teeOut))
-        {
-            Console.SetOut(_originalOut);
-        }
-        if (ReferenceEquals(Console.Error, _teeError))
-        {
-            Console.SetError(_originalError);
-        }
+        _sink.Write(ApplicationLogLevel.Info, "日志会话结束");
 
         lock (CurrentGate)
         {
@@ -139,23 +130,100 @@ internal sealed class ApplicationLog : IDisposable
         _sink.Dispose();
     }
 
-    private void WriteSessionHeader()
+    private static void Write(ApplicationLogLevel level, string message, bool writeToConsole, bool useErrorStream)
     {
-        _sink.WriteLine(string.Empty);
-        _sink.WriteLine("================================================================");
-        _sink.WriteLine($"[{NowInChina():yyyy-MM-dd HH:mm:ss.fff zzz}] ZZZae 日志会话开始");
-        _sink.WriteLine($"可执行文件：{Environment.ProcessPath ?? "unknown"}");
-        _sink.WriteLine($"操作系统：{RuntimeInformation.OSDescription}");
-        _sink.WriteLine(
-            $"进程架构：{RuntimeInformation.ProcessArchitecture}；"
-                + $"运行时：{RuntimeInformation.FrameworkDescription}"
-        );
-        _sink.WriteLine("================================================================");
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        lock (CurrentGate)
+        {
+            _current?._sink.Write(level, message);
+        }
+
+        if (!writeToConsole)
+        {
+            return;
+        }
+
+        var console = useErrorStream ? Console.Error : Console.Out;
+        console.WriteLine(message);
     }
 
-    private static DateTimeOffset NowInChina()
+    private static void WriteException(ApplicationLogLevel level, string context, Exception exception)
     {
-        return DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
+        ArgumentException.ThrowIfNullOrWhiteSpace(context);
+        ArgumentNullException.ThrowIfNull(exception);
+
+        Write(level, $"{context}{Environment.NewLine}{exception}", false, false);
+    }
+
+    private void WriteSessionHeader()
+    {
+        var localNow = DateTimeOffset.Now;
+        var localTimeZone = TimeZoneInfo.Local;
+        var localOffset = localNow.ToString("zzz", CultureInfo.InvariantCulture);
+        var currentCulture = DisplayCulture(CultureInfo.CurrentCulture);
+        var currentUiCulture = DisplayCulture(CultureInfo.CurrentUICulture);
+        var privilege = TryGetPrivilegeDescription();
+
+        _sink.Write(ApplicationLogLevel.Info, "ZZZae 日志会话开始");
+        _sink.Write(
+            ApplicationLogLevel.Info,
+            $"软件版本：{ApplicationBuildInfo.Version}；构建配置：{ApplicationBuildInfo.Configuration}"
+        );
+        _sink.Write(ApplicationLogLevel.Info, $"可执行文件：{Environment.ProcessPath ?? "unknown"}");
+        _sink.Write(ApplicationLogLevel.Info, $"程序目录：{AppContext.BaseDirectory}");
+        _sink.Write(ApplicationLogLevel.Info, $"当前工作目录：{Environment.CurrentDirectory}");
+        _sink.Write(
+            ApplicationLogLevel.Info,
+            $"进程：PID {Environment.ProcessId}；权限：{privilege}；64 位进程：{Environment.Is64BitProcess}"
+        );
+        _sink.Write(
+            ApplicationLogLevel.Info,
+            $"操作系统：{RuntimeInformation.OSDescription}；"
+                + $"版本：{Environment.OSVersion.VersionString}；"
+                + $"架构：{RuntimeInformation.OSArchitecture}；"
+                + $"64 位系统：{Environment.Is64BitOperatingSystem}"
+        );
+        _sink.Write(
+            ApplicationLogLevel.Info,
+            $"运行时：{RuntimeInformation.FrameworkDescription}；"
+                + $"运行时版本：{Environment.Version}；"
+                + $"进程架构：{RuntimeInformation.ProcessArchitecture}；"
+                + $"Server GC：{GCSettings.IsServerGC}；"
+                + $"逻辑处理器：{Environment.ProcessorCount}"
+        );
+        _sink.Write(
+            ApplicationLogLevel.Info,
+            $"区域：{currentCulture}；界面区域：{currentUiCulture}；"
+                + $"时区：{localTimeZone.Id}；当前偏移：{localOffset}"
+        );
+        _sink.Write(
+            ApplicationLogLevel.Info,
+            $"控制台重定向：输入 {Console.IsInputRedirected}，"
+                + $"输出 {Console.IsOutputRedirected}，错误 {Console.IsErrorRedirected}"
+        );
+    }
+
+    private static string DisplayCulture(CultureInfo culture)
+    {
+        return string.IsNullOrEmpty(culture.Name) ? "Invariant" : culture.Name;
+    }
+
+    private static string TryGetPrivilegeDescription()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return "非 Windows";
+        }
+
+        try
+        {
+            return ElevationManager.IsAdministrator() ? "管理员" : "普通用户";
+        }
+        catch (Exception)
+        {
+            return "无法确定";
+        }
     }
 
     private sealed class LogSink : IDisposable
@@ -169,37 +237,33 @@ internal sealed class ApplicationLog : IDisposable
             _writer = writer;
         }
 
-        public void Write(string? value)
+        public void Write(ApplicationLogLevel level, string message)
         {
-            if (value is null)
+            lock (_gate)
             {
-                return;
+                if (!_available)
+                {
+                    return;
+                }
+
+                try
+                {
+                    using var reader = new StringReader(message);
+                    while (reader.ReadLine() is { } line)
+                    {
+                        var timestamp = DateTimeOffset.Now.ToString(
+                            "yyyy-MM-dd HH:mm:ss.fff zzz",
+                            CultureInfo.InvariantCulture
+                        );
+                        _writer.WriteLine($"[{timestamp}] [{LevelName(level)}] {line}");
+                    }
+                }
+                catch (Exception)
+                {
+                    // Logging must never prevent an achievement export.
+                    _available = false;
+                }
             }
-
-            TryWrite(static (writer, state) => writer.Write(state), value);
-        }
-
-        public void Write(char[] buffer, int index, int count)
-        {
-            TryWrite(
-                static (writer, state) => writer.Write(state.Buffer, state.Index, state.Count),
-                (Buffer: buffer, Index: index, Count: count)
-            );
-        }
-
-        public void WriteLine(string? value)
-        {
-            TryWrite(static (writer, state) => writer.WriteLine(state), value);
-        }
-
-        public void WriteLine()
-        {
-            TryWrite(static (writer, _) => writer.WriteLine(), 0);
-        }
-
-        public void Flush()
-        {
-            TryWrite(static (writer, _) => writer.Flush(), 0);
         }
 
         public void Dispose()
@@ -218,75 +282,16 @@ internal sealed class ApplicationLog : IDisposable
             }
         }
 
-        private void TryWrite<TState>(Action<TextWriter, TState> write, TState state)
+        private static string LevelName(ApplicationLogLevel level)
         {
-            lock (_gate)
+            return level switch
             {
-                if (!_available)
-                {
-                    return;
-                }
-
-                try
-                {
-                    write(_writer, state);
-                }
-                catch (Exception)
-                {
-                    // Logging must never prevent an achievement export.
-                    _available = false;
-                }
-            }
-        }
-    }
-
-    private sealed class TeeTextWriter : TextWriter
-    {
-        private readonly TextWriter _console;
-        private readonly LogSink _sink;
-
-        public TeeTextWriter(TextWriter console, LogSink sink)
-        {
-            _console = console;
-            _sink = sink;
-        }
-
-        public override Encoding Encoding => _console.Encoding;
-
-        public override void Write(char value)
-        {
-            _console.Write(value);
-            _sink.Write(value.ToString());
-        }
-
-        public override void Write(string? value)
-        {
-            _console.Write(value);
-            _sink.Write(value);
-        }
-
-        public override void Write(char[] buffer, int index, int count)
-        {
-            _console.Write(buffer, index, count);
-            _sink.Write(buffer, index, count);
-        }
-
-        public override void WriteLine()
-        {
-            _console.WriteLine();
-            _sink.WriteLine();
-        }
-
-        public override void WriteLine(string? value)
-        {
-            _console.WriteLine(value);
-            _sink.WriteLine(value);
-        }
-
-        public override void Flush()
-        {
-            _console.Flush();
-            _sink.Flush();
+                ApplicationLogLevel.Debug => "DEBUG",
+                ApplicationLogLevel.Info => "INFO",
+                ApplicationLogLevel.Warning => "WARN",
+                ApplicationLogLevel.Error => "ERROR",
+                _ => throw new ArgumentOutOfRangeException(nameof(level), level, "未知日志级别"),
+            };
         }
     }
 }

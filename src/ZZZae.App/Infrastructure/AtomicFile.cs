@@ -9,8 +9,7 @@ internal static class AtomicFile
     public static async Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(path);
-        var directory =
-            Path.GetDirectoryName(fullPath) ?? throw new InvalidOperationException("无法确定导出文件目录。");
+        var directory = Path.GetDirectoryName(fullPath) ?? throw new InvalidOperationException("无法确定导出文件目录");
         Directory.CreateDirectory(directory);
 
         var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");

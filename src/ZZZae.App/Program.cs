@@ -12,26 +12,26 @@ try
 }
 catch (Exception exception)
 {
-    ApplicationLog.WriteException("程序入口发生未处理异常。", exception);
+    ApplicationLog.WriteException("程序入口发生未处理异常", exception);
     Console.Error.WriteLine();
-    Console.Error.WriteLine($"程序发生未处理异常：{exception.Message}");
-    Console.Error.WriteLine("请将 EXE 同目录的日志文件提供给开发者排查。");
+    ApplicationLog.WriteError($"程序发生未处理异常：{exception.Message}");
+    ApplicationLog.WriteError("请将 EXE 同目录的日志文件提供给开发者排查");
     exitCode = 1;
 }
 
 if (exitCode == ExporterApplication.UserRequestedExitCode)
 {
-    ApplicationLog.WriteDiagnostic("用户选择退出。");
+    ApplicationLog.WriteInfo("用户选择退出", writeToConsole: false);
     return 0;
 }
 
 if (exitCode == ExporterApplication.RelaunchedAsAdministratorExitCode)
 {
-    ApplicationLog.WriteDiagnostic("已把导出流程交给管理员权限实例，当前实例正常退出。");
+    ApplicationLog.WriteInfo("已把导出流程交给管理员权限实例，当前实例正常退出", writeToConsole: false);
     return 0;
 }
 
-ApplicationLog.WriteDiagnostic($"程序退出，代码 {exitCode}。");
+ApplicationLog.WriteInfo($"程序退出，代码 {exitCode}", writeToConsole: false);
 WaitForExitAcknowledgement(exitCode);
 return exitCode;
 
@@ -45,8 +45,8 @@ static void WaitForExitAcknowledgement(int exitCode)
     Console.WriteLine();
     Console.Write(
         exitCode == 0
-            ? "当前成就导出成功，按 Enter 退出 ZZZae……"
-            : "当前成就未成功导出，请检查上方提示和日志文件。按 Enter 退出 ZZZae……"
+            ? "当前成就导出成功，按 Enter 退出 ZZZae..."
+            : "当前成就未成功导出，请检查上方提示和日志文件。按 Enter 退出 ZZZae..."
     );
     Console.WriteLine();
 
@@ -56,10 +56,10 @@ static void WaitForExitAcknowledgement(int exitCode)
     }
     catch (IOException exception)
     {
-        ApplicationLog.WriteException("等待用户确认退出时读取控制台失败。", exception);
+        ApplicationLog.WriteWarningException("等待用户确认退出时读取控制台失败...", exception);
     }
     catch (InvalidOperationException exception)
     {
-        ApplicationLog.WriteException("等待用户确认退出时控制台不可用。", exception);
+        ApplicationLog.WriteWarningException("等待用户确认退出时控制台不可用...", exception);
     }
 }
