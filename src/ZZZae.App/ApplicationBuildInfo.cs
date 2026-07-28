@@ -2,7 +2,7 @@ namespace ZZZae.App;
 
 internal static class ApplicationBuildInfo
 {
-    public const string Version = "1.6.0";
+    public const string Version = "1.6.1";
 
 #if DEBUG
     public const string Configuration = "Debug";
