@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 
 namespace ZZZae.Hook;
 
+internal readonly record struct PacketHookInstallation(nint ModuleBase, uint ParserRva);
+
 internal static unsafe class PacketHook
 {
     /// <summary>
@@ -24,7 +26,7 @@ internal static unsafe class PacketHook
 
     private static delegate* unmanaged<nint, nint, uint, int, byte, int> _original;
 
-    public static ulong WaitForModuleAndInstall(TimeSpan timeout)
+    public static PacketHookInstallation WaitForModuleAndInstall(TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         nint moduleBase;
@@ -41,7 +43,7 @@ internal static unsafe class PacketHook
 
         var location = ParserLocator.Locate(moduleBase, HeadMagic, TailMagic);
         Install(location);
-        return location.Rva;
+        return new PacketHookInstallation(moduleBase, location.Rva);
     }
 
     public static void Uninstall()

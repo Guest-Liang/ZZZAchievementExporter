@@ -15,7 +15,7 @@ internal static class ExportSelectionFlow
         var options = new[]
         {
             "成就数据备份（保留全部成就、完成时间和成就原始字段）",
-            "Liyin 格式（仅导出已完成成就 ID）",
+            "Liyin 格式",
             "实验性 UIAF v1.2（非官方，按绝区零提案结构）",
         };
         var selected = ConsoleSelectionMenu.Read(options, 0, cancellationToken);
@@ -25,7 +25,7 @@ internal static class ExportSelectionFlow
         if (target == ExportTarget.UiafExperimental)
         {
             Console.WriteLine(
-                "提示：现行 UIAF 尚未正式定义此绝区零 v1.2 结构；"
+                "提示：现行 UIAF（v1.1）尚未正式定义此结构；"
                     + "该文件按待讨论提案生成，不保证与任何第三方工具兼容。"
             );
         }

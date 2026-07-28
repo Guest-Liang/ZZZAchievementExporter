@@ -7,11 +7,19 @@ namespace ZZZae.App.Infrastructure;
 
 internal abstract record HookMessage;
 
-internal sealed record HookReadyMessage(ulong ParserRva, int LocatorVersion) : HookMessage;
+internal sealed record HookReadyMessage(
+    ulong ParserRva,
+    int ParserLocatorVersion,
+    ulong UidRootSlotRva,
+    int UidLocatorVersion,
+    int EquivalentUidPathCount
+) : HookMessage;
 
-internal sealed record HookPacketMessage(CapturedPacket Packet) : HookMessage;
+internal sealed record HookPacketMessage(CapturedPacket Packet, uint Uid) : HookMessage;
 
 internal sealed record HookErrorMessage(string Error) : HookMessage;
+
+internal sealed record HookUidMessage(uint Uid) : HookMessage;
 
 internal sealed class HookPipeServer : IAsyncDisposable
 {
@@ -19,6 +27,7 @@ internal sealed class HookPipeServer : IAsyncDisposable
     private const byte ReadyMessage = 1;
     private const byte PacketMessage = 2;
     private const byte ErrorMessage = 3;
+    private const byte UidMessage = 4;
 
     private readonly NamedPipeServerStream _pipe;
 
@@ -56,6 +65,7 @@ internal sealed class HookPipeServer : IAsyncDisposable
             ReadyMessage => ParseReady(message),
             PacketMessage => ParsePacket(message),
             ErrorMessage => ParseError(message),
+            UidMessage => ParseUid(message),
             _ => throw new InvalidDataException($"Hook 消息类型 {message[0]} 未知。"),
         };
     }
@@ -67,34 +77,42 @@ internal sealed class HookPipeServer : IAsyncDisposable
 
     private static HookReadyMessage ParseReady(ReadOnlySpan<byte> message)
     {
-        if (message.Length != 13)
+        if (message.Length != 29)
         {
             throw new InvalidDataException("Hook 就绪消息长度无效。");
         }
 
         return new HookReadyMessage(
             BinaryPrimitives.ReadUInt64LittleEndian(message[1..9]),
-            BinaryPrimitives.ReadInt32LittleEndian(message[9..13])
+            BinaryPrimitives.ReadInt32LittleEndian(message[9..13]),
+            BinaryPrimitives.ReadUInt64LittleEndian(message[13..21]),
+            BinaryPrimitives.ReadInt32LittleEndian(message[21..25]),
+            BinaryPrimitives.ReadInt32LittleEndian(message[25..29])
         );
     }
 
     private static HookPacketMessage ParsePacket(ReadOnlySpan<byte> message)
     {
-        if (message.Length < 11)
+        if (message.Length < 15)
         {
             throw new InvalidDataException("Hook 数据包消息过短。");
         }
 
-        var commandId = BinaryPrimitives.ReadUInt16LittleEndian(message[1..3]);
-        var headerLength = BinaryPrimitives.ReadInt32LittleEndian(message[3..7]);
-        var bodyLength = BinaryPrimitives.ReadInt32LittleEndian(message[7..11]);
-        if (headerLength < 0 || bodyLength < 0 || (long)headerLength + bodyLength != message.Length - 11L)
+        var uid = BinaryPrimitives.ReadUInt32LittleEndian(message[1..5]);
+        var commandId = BinaryPrimitives.ReadUInt16LittleEndian(message[5..7]);
+        var headerLength = BinaryPrimitives.ReadInt32LittleEndian(message[7..11]);
+        var bodyLength = BinaryPrimitives.ReadInt32LittleEndian(message[11..15]);
+        if (
+            headerLength < 0
+            || bodyLength < 0
+            || (long)headerLength + bodyLength != message.Length - 15L
+        )
         {
             throw new InvalidDataException("Hook 数据包中的头部或正文长度无效。");
         }
 
-        var header = message.Slice(11, headerLength).ToArray();
-        var body = message.Slice(11 + headerLength, bodyLength).ToArray();
+        var header = message.Slice(15, headerLength).ToArray();
+        var body = message.Slice(15 + headerLength, bodyLength).ToArray();
 
         return new HookPacketMessage(
             new CapturedPacket
@@ -103,7 +121,8 @@ internal sealed class HookPipeServer : IAsyncDisposable
                 Header = header,
                 Body = body,
                 CapturedAt = DateTimeOffset.UtcNow,
-            }
+            },
+            uid
         );
     }
 
@@ -121,5 +140,15 @@ internal sealed class HookPipeServer : IAsyncDisposable
         }
 
         return new HookErrorMessage(Encoding.UTF8.GetString(message[5..]));
+    }
+
+    private static HookUidMessage ParseUid(ReadOnlySpan<byte> message)
+    {
+        if (message.Length != 5)
+        {
+            throw new InvalidDataException("Hook UID 消息长度无效。");
+        }
+
+        return new HookUidMessage(BinaryPrimitives.ReadUInt32LittleEndian(message[1..5]));
     }
 }

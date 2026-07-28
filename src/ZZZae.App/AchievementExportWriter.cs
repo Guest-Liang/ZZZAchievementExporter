@@ -13,6 +13,7 @@ internal static class AchievementExportWriter
 
     public static async Task<ExportResult> WriteAsync(
         AchievementSnapshot snapshot,
+        uint uid,
         AchievementCatalog catalog,
         ExportTarget target,
         CancellationToken cancellationToken
@@ -30,6 +31,7 @@ internal static class AchievementExportWriter
                 displayName = "成就数据备份";
                 content = AchievementBackupExporter.Serialize(
                     snapshot,
+                    uid,
                     catalog.LatestVersion,
                     catalog.Count
                 );
@@ -38,13 +40,13 @@ internal static class AchievementExportWriter
             case ExportTarget.Liyin:
                 fileName = $"ZZZae-liyin-{stamp}.json";
                 displayName = "Liyin 格式";
-                content = LiyinExporter.Serialize(snapshot);
+                content = LiyinExporter.Serialize(snapshot, uid);
                 break;
 
             case ExportTarget.UiafExperimental:
                 fileName = $"ZZZae-uiaf-{stamp}.json";
                 displayName = "实验性 UIAF（非官方）";
-                content = UiafExporter.Serialize(snapshot);
+                content = UiafExporter.Serialize(snapshot, uid);
                 break;
 
             default:

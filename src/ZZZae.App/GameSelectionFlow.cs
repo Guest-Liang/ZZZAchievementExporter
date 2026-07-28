@@ -4,7 +4,7 @@ namespace ZZZae.App;
 
 internal static class GameSelectionFlow
 {
-    private const string ChinaProductionMarker = "CNPRODWin";
+    private const string CNProductionMarker = "CNPRODWin";
 
     public static GameSelection? Select(string? configuredGamePath)
     {
@@ -156,7 +156,7 @@ internal static class GameSelectionFlow
     {
         return new FileNotFoundException(
             """
-            没有在注册表 HKCU\Software\miHoYo\HYP\1_1\nap_cn 的 GameInstallPath 找到国服游戏。
+            没有在注册表找到游戏路径。
             非交互启动时请使用 --game 指定游戏目录或 ZenlessZoneZero.exe 完整路径。
             """
         );
@@ -169,13 +169,13 @@ internal static class GameSelectionFlow
         var versionPath = Path.Combine(gameDirectory, "version_info");
         if (!File.Exists(versionPath))
         {
-            throw new FileNotFoundException("游戏目录缺少 version_info，无法确认国服正式渠道。", versionPath);
+            throw new FileNotFoundException("游戏目录缺少 version_info，无法确认渠道。", versionPath);
         }
 
         var buildMarker = File.ReadAllText(versionPath).Trim();
-        if (!buildMarker.StartsWith(ChinaProductionMarker, StringComparison.Ordinal))
+        if (!buildMarker.StartsWith(CNProductionMarker, StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"当前构建标记为 {buildMarker}，不是 ZZZae 支持的国服 Windows 正式渠道。");
+            throw new InvalidDataException($"当前构建标记为 {buildMarker}，不是 ZZZae 支持的渠道。");
         }
 
         var gameAssemblyPath = Path.Combine(gameDirectory, "GameAssembly.dll");
@@ -184,11 +184,6 @@ internal static class GameSelectionFlow
             throw new FileNotFoundException("游戏目录缺少 GameAssembly.dll。", gameAssemblyPath);
         }
 
-        // Do not reject a build by whole-file hash or fixed RVA.
-        // Harmless hot updates may change either. The injected hook
-        // instead requires a unique executable-section signature plus
-        // the packet framing magic, and the host requires the verified
-        // full-snapshot command and protobuf record structure.
         return buildMarker;
     }
 }

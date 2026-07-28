@@ -47,10 +47,10 @@ HKCU\Software\miHoYo\HYP\1_1\nap_cn\GameInstallPath
 
 ## 致谢与许可证
 
-项目设计参考了 [Yae](https://github.com/HolographicHat/Yae)。感谢[HolographicHat](https://github.com/HolographicHat) 与 Yae 项目贡献者提供的实现思路。
+项目设计参考了 [Yae](https://github.com/HolographicHat/Yae)。感谢[HolographicHat](https://github.com/HolographicHat) 与 Yae 项目贡献者提供的实现思路
 
-绝区零成就元数据取自[绝区零 Liyin](https://github.com/Ticca-Liyin/zzz.liyin.space)。
+绝区零成就元数据[src\ZZZae.Protocol\Metadata\AchievementInfo.json](src\ZZZae.Protocol\Metadata\AchievementInfo.json)取自[zzz.liyin.space](https://github.com/Ticca-Liyin/zzz.liyin.space)
 
-实验性成就交换格式参考 [UIGF-org 的 UIAF v1.1](https://uigf.org/zh/standards/uiaf.html) 和 UIGF 的多游戏分组思路；该引用不代表提案已经成为正式规范。
+实验性成就交换格式参考 [UIGF-org 的 UIAF v1.1](https://uigf.org/zh/standards/uiaf.html) 和 UIGF 的多游戏分组思路；该引用不代表[提案](https://github.com/orgs/UIGF-org/discussions/18)已经成为正式规范
 
-本仓库采用 GNU GPL v3，详见 [`LICENSE`](LICENSE)。
+本仓库采用 GNU GPL v3，详见 [`LICENSE`](LICENSE)

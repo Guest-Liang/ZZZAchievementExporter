@@ -12,9 +12,10 @@ public static class UiafExporter
     private const uint UnfinishedStatus = 1;
     private const uint FinishedStatus = 2;
 
-    public static string Serialize(AchievementSnapshot snapshot)
+    public static string Serialize(AchievementSnapshot snapshot, uint uid)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentOutOfRangeException.ThrowIfZero(uid);
 
         var document = new UiafDocument
         {
@@ -26,6 +27,7 @@ public static class UiafExporter
             },
             Nap = new UiafNapData
             {
+                Uid = uid,
                 List = snapshot
                     .Records.OrderBy(static record => record.Id)
                     .Select(static record => new UiafNapAchievement
@@ -80,6 +82,9 @@ internal sealed class UiafInfo
 
 internal sealed class UiafNapData
 {
+    [JsonPropertyName("uid")]
+    public required uint Uid { get; init; }
+
     [JsonPropertyName("list")]
     public required UiafNapAchievement[] List { get; init; }
 }

@@ -6,9 +6,10 @@ namespace ZZZae.Formats.Liyin;
 
 public static class LiyinExporter
 {
-    public static string Serialize(AchievementSnapshot snapshot)
+    public static string Serialize(AchievementSnapshot snapshot, uint uid)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentOutOfRangeException.ThrowIfZero(uid);
 
         var completed = snapshot
             .Records.Where(static record => record.IsCompleted)
@@ -23,6 +24,7 @@ public static class LiyinExporter
             {
                 ExportApp = "liyin",
                 ExportTimestamp = snapshot.CapturedAt.ToUnixTimeMilliseconds(),
+                Uid = uid,
             },
             List = completed,
         };
@@ -47,6 +49,9 @@ internal sealed class LiyinInfo
 
     [JsonPropertyName("export_timestamp")]
     public required long ExportTimestamp { get; init; }
+
+    [JsonPropertyName("uid")]
+    public required uint Uid { get; init; }
 }
 
 internal sealed class LiyinAchievement

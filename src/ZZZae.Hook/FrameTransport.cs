@@ -12,6 +12,9 @@ internal static class FrameTransport
     private const byte ReadyMessage = 1;
     private const byte PacketMessage = 2;
     private const byte ErrorMessage = 3;
+    private const byte UidMessage = 4;
+    private const int UidPollIntervalMilliseconds = 100;
+    private const int StableUidObservationCount = 2;
 
     private static readonly ConcurrentQueue<byte[]> Queue = new();
     private static readonly AutoResetEvent QueueChanged = new(false);
@@ -37,7 +40,15 @@ internal static class FrameTransport
             return false;
         }
 
-        var messageLength = checked(1 + sizeof(ushort) + sizeof(int) + sizeof(int) + header.Length + body.Length);
+        var messageLength = checked(
+            1
+                + sizeof(uint)
+                + sizeof(ushort)
+                + sizeof(int)
+                + sizeof(int)
+                + header.Length
+                + body.Length
+        );
         if (messageLength > MaximumMessageBytes)
         {
             return false;
@@ -53,37 +64,73 @@ internal static class FrameTransport
         var message = GC.AllocateUninitializedArray<byte>(messageLength);
         var span = message.AsSpan();
         span[0] = PacketMessage;
-        BinaryPrimitives.WriteUInt16LittleEndian(span[1..], commandId);
-        BinaryPrimitives.WriteInt32LittleEndian(span[3..], header.Length);
-        BinaryPrimitives.WriteInt32LittleEndian(span[7..], body.Length);
-        header.CopyTo(span[11..]);
-        body.CopyTo(span[(11 + header.Length)..]);
+        BinaryPrimitives.WriteUInt32LittleEndian(span[1..], 0);
+        BinaryPrimitives.WriteUInt16LittleEndian(span[5..], commandId);
+        BinaryPrimitives.WriteInt32LittleEndian(span[7..], header.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(span[11..], body.Length);
+        header.CopyTo(span[15..]);
+        body.CopyTo(span[(15 + header.Length)..]);
 
         Queue.Enqueue(message);
         QueueChanged.Set();
         return true;
     }
 
-    public static void SendReady(ulong rva)
+    public static void SendReady(uint parserRva, CurrentUidLocation uidLocation)
     {
-        Span<byte> message = stackalloc byte[1 + sizeof(ulong) + sizeof(int)];
+        Span<byte> message = stackalloc byte[
+            1
+                + sizeof(ulong)
+                + sizeof(int)
+                + sizeof(ulong)
+                + sizeof(int)
+                + sizeof(int)
+        ];
         message[0] = ReadyMessage;
-        BinaryPrimitives.WriteUInt64LittleEndian(message[1..], rva);
+        BinaryPrimitives.WriteUInt64LittleEndian(message[1..], parserRva);
         BinaryPrimitives.WriteInt32LittleEndian(message[9..], PacketHook.LocatorVersion);
+        BinaryPrimitives.WriteUInt64LittleEndian(message[13..], uidLocation.RootSlotRva);
+        BinaryPrimitives.WriteInt32LittleEndian(message[21..], CurrentUidLocator.LocatorVersion);
+        BinaryPrimitives.WriteInt32LittleEndian(message[25..], uidLocation.EquivalentPathCount);
         SendMessage(message);
     }
 
-    public static void Pump()
+    public static void Pump(CurrentUidReader uidReader)
     {
+        uint candidateUid = 0;
+        uint publishedUid = 0;
+        var stableObservations = 0;
+        long nextUidPoll = 0;
+
         while (Volatile.Read(ref _shutdown) == 0)
         {
+            var now = Environment.TickCount64;
+            if (now >= nextUidPoll)
+            {
+                PollUid(
+                    uidReader,
+                    ref candidateUid,
+                    ref publishedUid,
+                    ref stableObservations
+                );
+                nextUidPoll = now + UidPollIntervalMilliseconds;
+            }
+
             while (Queue.TryDequeue(out var message))
             {
                 Interlocked.Add(ref _queuedBytes, -message.Length);
+                if (message.Length >= 1 + sizeof(uint) && message[0] == PacketMessage)
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(
+                        message.AsSpan(1, sizeof(uint)),
+                        publishedUid
+                    );
+                }
+
                 SendMessage(message);
             }
 
-            QueueChanged.WaitOne(250);
+            QueueChanged.WaitOne(UidPollIntervalMilliseconds);
         }
     }
 
@@ -120,6 +167,57 @@ internal static class FrameTransport
         {
             // The host may already have closed the pipe.
         }
+    }
+
+    private static void PollUid(
+        CurrentUidReader uidReader,
+        ref uint candidateUid,
+        ref uint publishedUid,
+        ref int stableObservations
+    )
+    {
+        if (!uidReader.TryRead(out var observedUid))
+        {
+            candidateUid = 0;
+            stableObservations = 0;
+            if (publishedUid != 0)
+            {
+                publishedUid = 0;
+                SendUid(0);
+            }
+
+            return;
+        }
+
+        if (candidateUid == observedUid)
+        {
+            stableObservations = Math.Min(
+                stableObservations + 1,
+                StableUidObservationCount
+            );
+        }
+        else
+        {
+            candidateUid = observedUid;
+            stableObservations = 1;
+        }
+
+        if (
+            stableObservations >= StableUidObservationCount
+            && publishedUid != candidateUid
+        )
+        {
+            publishedUid = candidateUid;
+            SendUid(publishedUid);
+        }
+    }
+
+    private static void SendUid(uint uid)
+    {
+        Span<byte> message = stackalloc byte[1 + sizeof(uint)];
+        message[0] = UidMessage;
+        BinaryPrimitives.WriteUInt32LittleEndian(message[1..], uid);
+        SendMessage(message);
     }
 
     private static void SendMessage(ReadOnlySpan<byte> message)

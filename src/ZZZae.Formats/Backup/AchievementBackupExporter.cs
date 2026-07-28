@@ -9,15 +9,22 @@ public static class AchievementBackupExporter
 {
     private static readonly TimeSpan ChinaStandardOffset = TimeSpan.FromHours(8);
 
-    public static string Serialize(AchievementSnapshot snapshot, string metadataVersion, int metadataCount)
+    public static string Serialize(
+        AchievementSnapshot snapshot,
+        uint uid,
+        string metadataVersion,
+        int metadataCount
+    )
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentOutOfRangeException.ThrowIfZero(uid);
 
         var document = new AchievementBackupDocument
         {
             Schema = "ZZZae.AchievementBackup",
             SchemaVersion = 1,
             ExportApp = "ZZZae",
+            Uid = uid,
             CapturedAt = snapshot.CapturedAt.ToOffset(ChinaStandardOffset),
             GameVersion = snapshot.GameVersion,
             MetadataVersion = metadataVersion,
@@ -67,6 +74,9 @@ internal sealed class AchievementBackupDocument
 
     [JsonPropertyName("export_app")]
     public required string ExportApp { get; init; }
+
+    [JsonPropertyName("uid")]
+    public required uint Uid { get; init; }
 
     [JsonPropertyName("captured_at")]
     public required DateTimeOffset CapturedAt { get; init; }

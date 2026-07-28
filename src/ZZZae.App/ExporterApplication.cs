@@ -49,8 +49,8 @@ internal static class ExporterApplication
         }
         catch (OperationCanceledException)
         {
-            ApplicationLog.WriteDiagnostic("用户取消导出；没有写出不完整的成就文件。");
-            Console.Error.WriteLine("已取消；没有导出不完整的成就文件。");
+            ApplicationLog.WriteDiagnostic("用户取消导出；没有导出成就文件。");
+            Console.Error.WriteLine("已取消。");
             return 3;
         }
         catch (Exception exception)
@@ -82,8 +82,8 @@ internal static class ExporterApplication
         var gameVersion = gameSelection.Version;
         if (!ElevationManager.IsAdministrator())
         {
-            Console.WriteLine($"游戏：{gamePath}");
-            Console.WriteLine($"游戏构建：{gameVersion}（国服）");
+            Console.WriteLine($"游戏路径：{gamePath}");
+            Console.WriteLine($"游戏构建：{gameVersion}");
             Console.WriteLine("游戏路径已确认，正在申请管理员权限……");
             ElevationManager.RelaunchAsAdministrator(gamePath);
             Console.WriteLine("管理员权限实例已启动，当前窗口即将关闭。");
@@ -97,10 +97,10 @@ internal static class ExporterApplication
             );
         var catalog = AchievementCatalog.LoadBundled();
 
-        Console.WriteLine($"游戏：{gamePath}");
-        Console.WriteLine($"游戏构建：{gameVersion}（国服）");
+        Console.WriteLine($"游戏路径：{gamePath}");
+        Console.WriteLine($"游戏构建：{gameVersion}");
         Console.WriteLine($"成就元数据：{catalog.LatestVersion}" + $"（{catalog.Count} 项）");
-        Console.WriteLine("正在创建游戏进程并安装轻量 Hook……");
+        Console.WriteLine("正在启动游戏");
 
         return await AchievementExportSession.RunAsync(gamePath, gameVersion, hookPath, catalog);
     }
@@ -149,7 +149,7 @@ internal static class ExporterApplication
         {
             if (processes.Length != 0)
             {
-                throw new InvalidOperationException("检测到绝区零已经在运行。请先完全退出游戏，再运行 ZZZae。");
+                throw new InvalidOperationException("检测到绝区零已经在运行。请先退出游戏，再运行 ZZZae。");
             }
         }
         finally

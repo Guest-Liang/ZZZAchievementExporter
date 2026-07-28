@@ -27,9 +27,11 @@ public static class HookExports
         try
         {
             FrameTransport.Connect();
-            var hookRva = PacketHook.WaitForModuleAndInstall(TimeSpan.FromMinutes(2));
-            FrameTransport.SendReady(hookRva);
-            FrameTransport.Pump();
+            var installation = PacketHook.WaitForModuleAndInstall(TimeSpan.FromMinutes(2));
+            var uidLocation = CurrentUidLocator.Locate(installation.ModuleBase);
+            var uidReader = new CurrentUidReader(uidLocation);
+            FrameTransport.SendReady(installation.ParserRva, uidLocation);
+            FrameTransport.Pump(uidReader);
         }
         catch (OperationCanceledException)
         {
