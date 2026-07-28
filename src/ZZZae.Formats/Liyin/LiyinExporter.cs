@@ -22,7 +22,7 @@ public static class LiyinExporter
         {
             Info = new LiyinInfo
             {
-                ExportApp = "liyin",
+                ExportApp = "ZZZae",
                 ExportTimestamp = snapshot.CapturedAt.ToUnixTimeMilliseconds(),
                 Uid = uid,
             },

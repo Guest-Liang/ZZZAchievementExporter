@@ -27,6 +27,8 @@ ZZZae 是 Windows x64 下的绝区零国服成就导出工具。
 
 两种方法任选一种。`--game` 只替代游戏路径定位，程序仍会检查 `version_info` 的版本标记和 `GameAssembly.dll`，不会跳过兼容性检查。
 
+## 导出格式
+
 输出文件位于启动 ZZZae 时的目录。导出文件的区别为：
 
 - `ZZZae-achievements-日期时间.json`：成就数据备份，保留服务端返回的全部成就记录、完成时间，以及每条成就内尚未解释的原始 varint 字段，可用于长期备份和后续分析；
@@ -34,6 +36,8 @@ ZZZae 是 Windows x64 下的绝区零国服成就导出工具。
 - `ZZZae-uiaf-日期时间.json`：按绝区零 UIAF v1.2 提案生成的非官方实验格式，包含服务端实际返回的全部成就记录。
 
 程序运行日志会在软件的同目录追加写入`ZZZae-YYYY-MM-DD.log`。如果导出失败，请将日志文件提供给开发者排查。
+
+## 构建
 
 GitHub Release 同时提供文件名带 `Release` 和 `Debug` 后缀的版本。日常使用请选择 Release。
 
@@ -54,7 +58,7 @@ HKCU\Software\miHoYo\HYP\1_1\nap_cn\GameInstallPath
 
 项目设计参考了 [Yae](https://github.com/HolographicHat/Yae). 感谢 [HolographicHat](https://github.com/HolographicHat) 与 Yae 项目贡献者提供的实现思路
 
-绝区零成就元数据[src\ZZZae.Protocol\Metadata\AchievementInfo.json](src\ZZZae.Protocol\Metadata\AchievementInfo.json)取自[zzz.liyin.space](https://github.com/Ticca-Liyin/zzz.liyin.space)
+绝区零成就元数据[src\ZZZae.Protocol\Metadata\AchievementInfo.json](https://github.com/Guest-Liang/ZZZAchievementExporter/blob/main/src/ZZZae.Protocol/Metadata/AchievementInfo.json)取自[zzz.liyin.space](https://github.com/Ticca-Liyin/zzz.liyin.space)
 
 实验性成就交换格式参考 [UIGF-org 的 UIAF v1.1](https://uigf.org/zh/standards/uiaf.html) 和 UIGF 的多游戏分组思路；[提案](https://github.com/orgs/UIGF-org/discussions/18)仍在讨论中，该引用不代表其已经成为正式规范
 
