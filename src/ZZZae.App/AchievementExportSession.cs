@@ -12,8 +12,8 @@ internal static class AchievementExportSession
 
     private static readonly AchievementProtocolProfile VerifiedAchievementProtocol = new()
     {
-        FullSnapshotCommandId = 3692,
-        RecordFieldPath = "$.11.778.9[]",
+        FullSnapshotCommandId = 6515,
+        RecordFieldPath = "$.9.1691.1[]",
         IdFieldNumber = 1,
         FinishTimestampFieldNumber = 3,
         CompletedFlagFieldNumber = 4,

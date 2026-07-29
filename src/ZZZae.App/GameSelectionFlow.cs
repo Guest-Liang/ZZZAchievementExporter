@@ -5,6 +5,7 @@ namespace ZZZae.App;
 internal static class GameSelectionFlow
 {
     private const string CNProductionMarker = "CNPRODWin";
+    private const string SupportedProductionVersionPrefix = "CNPRODWin3.1.";
 
     public static GameSelection? Select(string? configuredGamePath)
     {
@@ -179,6 +180,11 @@ internal static class GameSelectionFlow
         if (!buildMarker.StartsWith(CNProductionMarker, StringComparison.Ordinal))
         {
             throw new InvalidDataException($"当前构建标记为 {buildMarker}，不是 ZZZae 支持的渠道");
+        }
+
+        if (!buildMarker.StartsWith(SupportedProductionVersionPrefix, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"当前构建标记为 {buildMarker}；此版本 ZZZae 仅支持绝区零国服 3.1");
         }
 
         var gameAssemblyPath = Path.Combine(gameDirectory, "GameAssembly.dll");

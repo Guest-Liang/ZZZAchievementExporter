@@ -9,19 +9,14 @@ namespace ZZZae.Hook;
 /// </summary>
 internal sealed unsafe class CurrentUidReader
 {
-    private const int ClassInitializedFlagOffset = 0xCC;
-    private const int FirstClassLinkOffset = 0x40;
-    private const int SecondClassOffset = 0x10;
-    private const int StaticInstanceSlotOffset = 0x50;
-    private const int CachedServiceOffset = 0x40;
-    private const int UidOffset = 0x40;
-
     private readonly nint _process = NativeMethods.GetCurrentProcess();
     private readonly nint _rootSlotAddress;
+    private readonly CurrentUidObjectLayout _objectLayout;
 
     public CurrentUidReader(CurrentUidLocation location)
     {
         _rootSlotAddress = location.RootSlotAddress;
+        _objectLayout = location.ObjectLayout;
     }
 
     public bool TryRead(out uint uid)
@@ -34,18 +29,18 @@ internal sealed unsafe class CurrentUidReader
             || !TryReadPointer(metadataUsageCell, out var firstClass)
             || firstClass == 0
             || !IsClassInitialized(firstClass)
-            || !TryReadPointer(firstClass + FirstClassLinkOffset, out var firstLink)
+            || !TryReadPointer(firstClass + _objectLayout.FirstClassLinkOffset, out var firstLink)
             || firstLink == 0
-            || !TryReadPointer(firstLink + SecondClassOffset, out var secondClass)
+            || !TryReadPointer(firstLink + _objectLayout.SecondClassOffset, out var secondClass)
             || secondClass == 0
             || !IsClassInitialized(secondClass)
-            || !TryReadPointer(secondClass + StaticInstanceSlotOffset, out var staticInstanceSlot)
+            || !TryReadPointer(secondClass + _objectLayout.StaticInstanceSlotOffset, out var staticInstanceSlot)
             || staticInstanceSlot == 0
             || !TryReadPointer(staticInstanceSlot, out var owner)
             || owner == 0
-            || !TryReadPointer(owner + CachedServiceOffset, out var service)
+            || !TryReadPointer(owner + _objectLayout.CachedServiceOffset, out var service)
             || service == 0
-            || !TryReadUInt32(service + UidOffset, out uid)
+            || !TryReadUInt32(service + _objectLayout.UidOffset, out uid)
             || uid == 0
         )
         {
@@ -58,7 +53,8 @@ internal sealed unsafe class CurrentUidReader
 
     private bool IsClassInitialized(nint classAddress)
     {
-        return TryReadByte(classAddress + ClassInitializedFlagOffset, out var initialized) && (initialized & 1) != 0;
+        return TryReadByte(classAddress + _objectLayout.ClassInitializedFlagOffset, out var initialized)
+            && (initialized & 1) != 0;
     }
 
     private bool TryReadPointer(nint address, out nint value)

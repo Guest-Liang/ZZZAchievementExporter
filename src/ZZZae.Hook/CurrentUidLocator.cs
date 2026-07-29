@@ -4,30 +4,51 @@ using System.Text;
 namespace ZZZae.Hook;
 
 /// <summary>
+/// 从 UID getter 的机器码中恢复出的对象布局，供只读 reader 使用。
+/// </summary>
+internal readonly record struct CurrentUidObjectLayout(
+    int ClassInitializedFlagOffset,
+    int FirstClassLinkOffset,
+    int SecondClassOffset,
+    int StaticInstanceSlotOffset,
+    int CachedServiceOffset,
+    int UidOffset
+)
+{
+    public override string ToString()
+    {
+        return $"class-init +0x{ClassInitializedFlagOffset:X}, "
+            + $"class-link +0x{FirstClassLinkOffset:X}/+0x{SecondClassOffset:X}, "
+            + $"static-slot +0x{StaticInstanceSlotOffset:X}, "
+            + $"service +0x{CachedServiceOffset:X}, UID +0x{UidOffset:X}";
+    }
+}
+
+/// <summary>
 /// 当前玩家 UID 的运行时根槽。RVA 只用于诊断；读取时始终使用已经解析出的地址。
 /// </summary>
 internal readonly record struct CurrentUidLocation(
     nint RootSlotAddress,
     uint RootSlotRva,
     uint ServiceTypeSlotRva,
+    CurrentUidObjectLayout ObjectLayout,
     int EquivalentPathCount
 );
 
 /// <summary>
 /// 从 GameAssembly.dll 的代码结构中定位当前玩家 UID 所依赖的运行时根槽。
 ///
-/// 这里不使用固定 RVA、完整函数入口或 metadata usage 编号。定位锚定的是 getter
-/// 正常路径中稳定的对象布局：
+/// 这里不使用固定 RVA、完整函数入口或 metadata usage 编号。定位锚定 3.1 getter
+/// 正常路径中的寄存器流，从已经核对过的内存操作数中恢复并验证对象布局：
 ///
-/// class -> +0x40 -> +0x10 -> class -> +0x50 -> static owner
-/// owner -> +0x40 -> UID service -> +0x40 uint32 UID
+/// class -> first link -> second class -> static owner -> UID service -> uint32 UID
 ///
 /// 同一 getter 可能存在原生与 HybridCLR 等价代码路径，所以允许多个代码命中；
-/// 但它们必须全部归一到同一个根全局槽和服务类型槽，否则失败关闭。
+/// 但它们必须全部归一到同一个根全局槽、服务类型槽和对象布局，否则失败关闭。
 /// </summary>
 internal static unsafe class CurrentUidLocator
 {
-    public const int LocatorVersion = 1;
+    public const int LocatorVersion = 2;
 
     private const int CandidateLength = 0x8E;
     private const int MarkerOffset = 0x07;
@@ -37,7 +58,14 @@ internal static unsafe class CurrentUidLocator
 
     private static ReadOnlySpan<byte> Marker => [0x48, 0x8B, 0x30, 0xF6, 0x86, 0xCC, 0x00, 0x00, 0x00, 0x01];
 
-    private readonly record struct Candidate(uint CodeRva, uint RootSlotRva, uint ServiceTypeSlotRva);
+    private static readonly CurrentUidObjectLayout Version31ObjectLayout = new(0xCC, 0x68, 0x10, 0x60, 0x38, 0x40);
+
+    private readonly record struct Candidate(
+        uint CodeRva,
+        uint RootSlotRva,
+        uint ServiceTypeSlotRva,
+        CurrentUidObjectLayout ObjectLayout
+    );
 
     public static CurrentUidLocation Locate(nint moduleBase)
     {
@@ -79,6 +107,7 @@ internal static unsafe class CurrentUidLocator
             if (
                 candidate.RootSlotRva != selected.RootSlotRva
                 || candidate.ServiceTypeSlotRva != selected.ServiceTypeSlotRva
+                || candidate.ObjectLayout != selected.ObjectLayout
             )
             {
                 throw new InvalidDataException(DescribeAmbiguousCandidates(candidates));
@@ -89,6 +118,7 @@ internal static unsafe class CurrentUidLocator
             (nint)(image + selected.RootSlotRva),
             selected.RootSlotRva,
             selected.ServiceTypeSlotRva,
+            selected.ObjectLayout,
             candidates.Count
         );
     }
@@ -146,7 +176,7 @@ internal static unsafe class CurrentUidLocator
             if (
                 candidateOffset >= 0
                 && candidateOffset <= section.Length - CandidateLength
-                && IsUidGetterPath(section, candidateOffset)
+                && TryDecodeUidGetterPath(section, candidateOffset, out var objectLayout)
             )
             {
                 var codeRva = sectionRva + (uint)candidateOffset;
@@ -171,7 +201,7 @@ internal static unsafe class CurrentUidLocator
                     && IsWritableDataSlot(image, sectionTable, sectionCount, imageSize, serviceTypeSlotRva)
                 )
                 {
-                    candidates.Add(new Candidate(codeRva, rootSlotRva, serviceTypeSlotRva));
+                    candidates.Add(new Candidate(codeRva, rootSlotRva, serviceTypeSlotRva, objectLayout));
                     if (candidates.Count > MaximumCandidates)
                     {
                         throw new InvalidDataException("当前玩家 UID getter 的结构命中数量异常，拒绝继续定位");
@@ -183,30 +213,87 @@ internal static unsafe class CurrentUidLocator
         }
     }
 
-    private static bool IsUidGetterPath(ReadOnlySpan<byte> code, int start)
+    private static bool TryDecodeUidGetterPath(
+        ReadOnlySpan<byte> code,
+        int start,
+        out CurrentUidObjectLayout objectLayout
+    )
     {
+        objectLayout = default;
+
         // RIP 相对地址、call/jump 位移会随重编译变化，故只核对操作码、寄存器流、
-        // IL2CPP 初始化标志偏移以及真正有语义的对象字段偏移
-        return Matches(code, start + 0x00, [0x48, 0x8B, 0x05])
-            && Matches(code, start + 0x07, [0x48, 0x8B, 0x30, 0xF6, 0x86, 0xCC, 0x00, 0x00, 0x00, 0x01, 0x0F, 0x84])
-            && Matches(
-                code,
-                start + 0x17,
-                [0x48, 0x8B, 0x46, 0x40, 0x48, 0x8B, 0x78, 0x10, 0x48, 0x85, 0xFF, 0x0F, 0x84]
-            )
-            && Matches(code, start + 0x28, [0xF6, 0x87, 0xCC, 0x00, 0x00, 0x00, 0x01, 0x0F, 0x84])
-            && Matches(code, start + 0x35, [0x48, 0x8B, 0x47, 0x50, 0x48, 0x8B, 0x30, 0x48, 0x85, 0xF6, 0x0F, 0x84])
-            && Matches(code, start + 0x45, [0x80, 0x3D])
-            && code[start + 0x4B] == 0
-            && Matches(code, start + 0x4C, [0x0F, 0x84])
-            && Matches(code, start + 0x52, [0x80, 0x3D])
-            && code[start + 0x58] == 0
-            && Matches(code, start + 0x59, [0x0F, 0x85])
-            && Matches(code, start + 0x5F, [0x48, 0x8B, 0x46, 0x40, 0x48, 0x85, 0xC0, 0x75])
-            && Matches(code, start + 0x68, [0x48, 0x8B, 0x15])
-            && Matches(code, start + 0x6F, [0x48, 0x89, 0xF1, 0xE8])
-            && Matches(code, start + 0x77, [0x48, 0x89, 0x46, 0x40, 0x48, 0x85, 0xC0, 0x0F, 0x84])
-            && Matches(code, start + 0x84, [0x8B, 0x40, 0x40, 0x48, 0x83, 0xC4, 0x28, 0x5F, 0x5E, 0xC3]);
+        // 两处 IL2CPP 初始化标志偏移以及 getter 的对象字段偏移直接从指令操作数解出。
+        if (
+            !Matches(code, start + 0x00, [0x48, 0x8B, 0x05])
+            || !Matches(code, start + 0x07, [0x48, 0x8B, 0x30, 0xF6, 0x86])
+            || code[start + 0x10] != 1
+            || !Matches(code, start + 0x11, [0x0F, 0x84])
+            || !Matches(code, start + 0x17, [0x48, 0x8B, 0x46])
+            || !Matches(code, start + 0x1B, [0x48, 0x8B, 0x78])
+            || !Matches(code, start + 0x1F, [0x48, 0x85, 0xFF, 0x0F, 0x84])
+            || !Matches(code, start + 0x28, [0xF6, 0x87])
+            || code[start + 0x2E] != 1
+            || !Matches(code, start + 0x2F, [0x0F, 0x84])
+            || !Matches(code, start + 0x35, [0x48, 0x8B, 0x47])
+            || !Matches(code, start + 0x39, [0x48, 0x8B, 0x30, 0x48, 0x85, 0xF6, 0x0F, 0x84])
+            || !Matches(code, start + 0x45, [0x80, 0x3D])
+            || code[start + 0x4B] != 0
+            || !Matches(code, start + 0x4C, [0x0F, 0x84])
+            || !Matches(code, start + 0x52, [0x80, 0x3D])
+            || code[start + 0x58] != 0
+            || !Matches(code, start + 0x59, [0x0F, 0x85])
+            || !Matches(code, start + 0x5F, [0x48, 0x8B, 0x46])
+            || !Matches(code, start + 0x63, [0x48, 0x85, 0xC0, 0x75])
+            || !Matches(code, start + 0x68, [0x48, 0x8B, 0x15])
+            || !Matches(code, start + 0x6F, [0x48, 0x89, 0xF1, 0xE8])
+            || !Matches(code, start + 0x77, [0x48, 0x89, 0x46])
+            || !Matches(code, start + 0x7B, [0x48, 0x85, 0xC0, 0x0F, 0x84])
+            || !Matches(code, start + 0x84, [0x8B, 0x40])
+            || !Matches(code, start + 0x87, [0x48, 0x83, 0xC4, 0x28, 0x5F, 0x5E, 0xC3])
+        )
+        {
+            return false;
+        }
+
+        var classInitializedFlagOffset = BinaryPrimitives.ReadInt32LittleEndian(code.Slice(start + 0x0C, sizeof(int)));
+        var secondClassInitializedFlagOffset = BinaryPrimitives.ReadInt32LittleEndian(
+            code.Slice(start + 0x2A, sizeof(int))
+        );
+        var firstClassLinkOffset = (sbyte)code[start + 0x1A];
+        var secondClassOffset = (sbyte)code[start + 0x1E];
+        var staticInstanceSlotOffset = (sbyte)code[start + 0x38];
+        var cachedServiceOffset = (sbyte)code[start + 0x62];
+        var cachedServiceStoreOffset = (sbyte)code[start + 0x7A];
+        var uidOffset = (sbyte)code[start + 0x86];
+
+        if (
+            classInitializedFlagOffset != secondClassInitializedFlagOffset
+            || !IsSaneFieldOffset(classInitializedFlagOffset, sizeof(int), 0x400)
+            || !IsSaneFieldOffset(firstClassLinkOffset, sizeof(nint), sbyte.MaxValue)
+            || !IsSaneFieldOffset(secondClassOffset, sizeof(nint), sbyte.MaxValue)
+            || !IsSaneFieldOffset(staticInstanceSlotOffset, sizeof(nint), sbyte.MaxValue)
+            || !IsSaneFieldOffset(cachedServiceOffset, sizeof(nint), sbyte.MaxValue)
+            || cachedServiceOffset != cachedServiceStoreOffset
+            || !IsSaneFieldOffset(uidOffset, sizeof(uint), sbyte.MaxValue)
+        )
+        {
+            return false;
+        }
+
+        objectLayout = new CurrentUidObjectLayout(
+            classInitializedFlagOffset,
+            firstClassLinkOffset,
+            secondClassOffset,
+            staticInstanceSlotOffset,
+            cachedServiceOffset,
+            uidOffset
+        );
+        return objectLayout == Version31ObjectLayout;
+    }
+
+    private static bool IsSaneFieldOffset(int offset, int alignment, int maximum)
+    {
+        return offset > 0 && offset <= maximum && offset % alignment == 0;
     }
 
     private static bool Matches(ReadOnlySpan<byte> code, int offset, ReadOnlySpan<byte> expected)
@@ -282,7 +369,8 @@ internal static unsafe class CurrentUidLocator
             description.Append(
                 $"代码 RVA 0x{candidate.CodeRva:X} → "
                     + $"RootSlot 0x{candidate.RootSlotRva:X} / "
-                    + $"ServiceTypeSlot 0x{candidate.ServiceTypeSlotRva:X}"
+                    + $"ServiceTypeSlot 0x{candidate.ServiceTypeSlotRva:X} / "
+                    + $"布局 {candidate.ObjectLayout}"
             );
         }
 
