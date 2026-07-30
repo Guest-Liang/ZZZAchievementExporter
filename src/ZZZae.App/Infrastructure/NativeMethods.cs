@@ -69,6 +69,34 @@ internal static partial class NativeMethods
         internal fixed char ExecutablePath[260];
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct OpenFileName
+    {
+        internal uint Size;
+        internal nint Owner;
+        internal nint Instance;
+        internal char* Filter;
+        internal char* CustomFilter;
+        internal uint MaxCustomFilter;
+        internal uint FilterIndex;
+        internal char* File;
+        internal uint MaxFile;
+        internal char* FileTitle;
+        internal uint MaxFileTitle;
+        internal char* InitialDirectory;
+        internal char* Title;
+        internal uint Flags;
+        internal ushort FileOffset;
+        internal ushort FileExtension;
+        internal char* DefaultExtension;
+        internal nint CustomData;
+        internal nint Hook;
+        internal char* TemplateName;
+        internal nint Reserved;
+        internal uint ReservedValue;
+        internal uint ExtendedFlags;
+    }
+
     [LibraryImport(
         "kernel32.dll",
         EntryPoint = "CreateProcessW",
@@ -186,4 +214,14 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", EntryPoint = "Module32NextW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static unsafe partial bool Module32Next(nint snapshot, ModuleEntry* moduleEntry);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+    internal static partial nint GetForegroundWindow();
+
+    [LibraryImport("comdlg32.dll", EntryPoint = "GetOpenFileNameW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static unsafe partial bool GetOpenFileName(OpenFileName* openFileName);
+
+    [LibraryImport("comdlg32.dll", EntryPoint = "CommDlgExtendedError")]
+    internal static partial uint CommDlgExtendedError();
 }

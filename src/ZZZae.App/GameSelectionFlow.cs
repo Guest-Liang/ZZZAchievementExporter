@@ -31,13 +31,10 @@ internal static class GameSelectionFlow
         while (true)
         {
             ApplicationLog.WriteInfo("请选择游戏路径获取方式（↑/↓ 选择，Enter 确认）：");
-            var isAdministrator = ElevationManager.IsAdministrator();
             var options = new[]
             {
                 registryGamePath is null ? "从注册表读取游戏路径（未检测到有效路径）" : "从注册表读取游戏路径",
-                isAdministrator
-                    ? "手动粘贴游戏目录 / ZenlessZoneZero.exe"
-                    : "手动粘贴或拖入游戏目录 / ZenlessZoneZero.exe",
+                "使用资源管理器选择 ZenlessZoneZero.exe",
                 "退出 ZZZae",
             };
             var selected = ConsoleSelectionMenu.Read(
@@ -87,34 +84,46 @@ internal static class GameSelectionFlow
 
             if (selected == 1)
             {
-                if (isAdministrator)
+                ApplicationLog.WriteInfo("正在打开文件选择窗口，请选择 ZenlessZoneZero.exe（关闭窗口可返回菜单）");
+                string? selectedPath;
+                try
                 {
-                    ApplicationLog.WriteInfo(
-                        "当前窗口具有管理员权限，Windows 会阻止从普通权限资源管理器拖入；请复制并粘贴完整路径"
+                    selectedPath = GameExecutablePicker.Pick(
+                        "绝区零",
+                        "ZenlessZoneZero.exe",
+                        registryGamePath
                     );
                 }
-                else
+                catch (IOException exception)
                 {
-                    ApplicationLog.WriteInfo("可以把游戏目录或 ZenlessZoneZero.exe 拖入当前窗口，也可以粘贴完整路径");
+                    ApplicationLog.WriteWarning($"无法打开文件选择窗口：{exception.Message}");
+                    ApplicationLog.WriteDebug($"文件选择窗口异常：{exception}", writeToConsole: false);
+                    selectedOption = 1;
+                    if (!WaitForReturnToPathMenu())
+                    {
+                        return null;
+                    }
+
+                    continue;
                 }
 
-                Console.Write("游戏路径（直接按 Enter 取消）：");
-                var enteredPath = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(enteredPath))
+                if (selectedPath is null)
                 {
-                    return null;
+                    ApplicationLog.WriteInfo("已取消选择，返回游戏路径获取菜单");
+                    selectedOption = 1;
+                    continue;
                 }
 
                 try
                 {
-                    var selection = ResolveAndValidateGame(enteredPath);
-                    ApplicationLog.WriteInfo("游戏路径来源：交互输入");
+                    var selection = ResolveAndValidateGame(selectedPath);
+                    ApplicationLog.WriteInfo("游戏路径来源：资源管理器文件选择");
                     return selection;
                 }
                 catch (Exception exception) when (IsGamePathValidationException(exception))
                 {
-                    ApplicationLog.WriteWarning($"手动指定的游戏路径无效：{exception.Message}");
-                    ApplicationLog.WriteDebug($"手动指定的游戏路径校验异常：{exception}", writeToConsole: false);
+                    ApplicationLog.WriteWarning($"选择的游戏程序无效：{exception.Message}");
+                    ApplicationLog.WriteDebug($"所选游戏程序校验异常：{exception}", writeToConsole: false);
                     selectedOption = 1;
                     if (!WaitForReturnToPathMenu())
                     {
